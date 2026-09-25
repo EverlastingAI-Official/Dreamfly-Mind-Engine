@@ -28,10 +28,8 @@
     "@types/node": "^22.0.0",
     "@types/nodemailer": "^7.0.0",
     "@types/pg": "^8.0.0",
-    "@types/smtp-server": "^3.5.13",
     "@types/yauzl": "^2.10.0",
     "@types/yazl": "^2.4.0",
-    "smtp-server": "^3.19.13",
     "tsx": "^4.0.0",
     "typescript": "~5.9.0"
   },
@@ -42,7 +40,7 @@
     "build": "tsc",
     "start": "node --env-file-if-exists=.env dist/index.js",
     "test": "node --env-file-if-exists=.env --import tsx --test tests/*.test.ts",
-    "dev:mail": "node --env-file-if-exists=.env --import tsx scripts/dev-mail.ts",
+    "smtp:check": "node --env-file-if-exists=.env --import tsx scripts/check-smtp.ts",
     "setup:local": "node --import tsx scripts/setup-local.ts",
     "admin": "node --env-file-if-exists=.env --import tsx scripts/admin.ts",
     "maintenance": "node --env-file-if-exists=.env --import tsx scripts/maintenance.ts"

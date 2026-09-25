@@ -1,8 +1,8 @@
-import nodemailer from 'nodemailer';
 import { pool, transaction } from './db.js';
-import { config, secret } from './config.js';
+import { config } from './config.js';
 import { decrypt } from './crypto.js';
 import { syncGithub } from './github.js';
+import { sendEmailCode } from './mail.js';
 
 export async function runOnce(){
   const job=await transaction(async db=>(await db.query(`WITH next AS (
@@ -16,8 +16,7 @@ export async function runOnce(){
     if(job.type==='email'){
       const c=(await pool.query('SELECT * FROM email_challenges WHERE id=$1 AND consumed_at IS NULL AND expires_at>now()',[job.payload.challenge_id])).rows[0];
       if(c){
-        const transport=nodemailer.createTransport({host:process.env.SMTP_HOST||'127.0.0.1',port:Number(process.env.SMTP_PORT||1025),secure:process.env.SMTP_SECURE==='true',requireTLS:process.env.SMTP_REQUIRE_TLS==='true',connectionTimeout:15000,socketTimeout:30000,...(process.env.SMTP_USER?{auth:{user:process.env.SMTP_USER,pass:secret('SMTP_PASSWORD',true)}}:{})});
-        await transport.sendMail({from:process.env.SMTP_FROM||'DreamFly <noreply@localhost.test>',to:c.email,subject:c.purpose==='register'?'DreamFly 注册验证码':'DreamFly 重置密码验证码',text:`您的验证码：${decrypt(job.payload.code,`email:${c.id}`)}\n请在有效期内使用。若非本人操作，请忽略。`,textEncoding:'base64'});transport.close();
+        await sendEmailCode(c.email,c.purpose,decrypt(job.payload.code,`email:${c.id}`));
       }
       result={status:'succeeded'};
     }else result=await syncGithub(job);

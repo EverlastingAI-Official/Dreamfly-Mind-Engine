@@ -25,13 +25,24 @@ test('PostgreSQL account, skill, model ownership and conversation integration',a
   async function register(email:string){
     const sent=await request('POST','/auth/email-codes',{email,purpose:'register'});assert.equal(sent.statusCode,200);const challenge=sent.json().data.challenge_id;
     const job=(await pool.query("SELECT * FROM jobs WHERE type='email' AND payload->>'challenge_id'=$1",[challenge])).rows[0];const code=decrypt(job.payload.code,`email:${challenge}`);
-    const payload={email,challenge_id:challenge,code,password:'Local-test-password-2026',display_name:email.split('@')[0]};
+    const payload={email,challenge_id:challenge,code,password:'abc12345',display_name:email.split('@')[0]};
     const registered=await request('POST','/auth/register',payload);assert.equal(registered.statusCode,200,registered.body);
     const repeated=await request('POST','/auth/register',payload);assert.equal(repeated.statusCode,422);
     const login=await request('POST','/auth/login',{email,password:payload.password});assert.equal(login.statusCode,200,login.body);
     return {...login.json().data,cookie:login.cookies.map(x=>`${x.name}=${x.value}`).join('; ')};
   }
   try{
+    await t.test('development loopback origins can request email codes while foreign origins are rejected',async()=>{
+      for(const [index,requestOrigin] of ['http://127.0.0.1:5173','http://localhost:5173','http://[::1]:5173'].entries()){
+        const response=await app.inject({method:'POST',url:'/api/v1/auth/email-codes',headers:{origin:requestOrigin},payload:{email:`origin-${index}@example.test`,purpose:'reset_password'}});
+        assert.equal(response.statusCode,200,response.body);
+      }
+      for(const requestOrigin of [undefined,'null','http://localhost:5174','http://localhost.attacker.test:5173','https://attacker.test']){
+        const response=await app.inject({method:'POST',url:'/api/v1/auth/email-codes',headers:requestOrigin?{origin:requestOrigin}:{},payload:{email:'origin-blocked@example.test',purpose:'reset_password'}});
+        assert.equal(response.statusCode,403);
+        assert.equal(response.json().error.code,'ORIGIN_REJECTED');
+      }
+    });
     await t.test('verification codes are single-use, passwords are digests, cookies authenticate',async()=>{
       a=await register('alice@example.test');b=await register('bob@example.test');
       const row=(await pool.query('SELECT password_digest FROM users WHERE id=$1',[a.user.id])).rows[0];assert.match(row.password_digest,/^\$argon2id\$/);
@@ -39,13 +50,32 @@ test('PostgreSQL account, skill, model ownership and conversation integration',a
       const anon=await request('GET','/model-profiles');assert.equal(anon.statusCode,401);
       const csrf=await app.inject({method:'POST',url:'/api/v1/skills',headers:{origin,cookie:a.cookie},payload:{}});assert.equal(csrf.statusCode,403);
     });
-    await t.test('SMTP worker delivers only to a local test sink and erases queued plaintext-equivalent data',async()=>{
+    await t.test('new passwords require at least eight characters with letters and digits on every write route',async()=>{
+      for(const password of ['abc1234','abcdefgh','12345678','a1'.repeat(65)]){
+        const payload={email:a.user.email,challenge_id:randomUUID(),code:'123456',display_name:'fixture',password};
+        for(const route of ['/auth/register','/auth/reset-password','/auth/change-password']){
+          const response=await request('POST',route,route==='/auth/change-password'?{old_password:'abc12345',password}:payload,a);
+          assert.equal(response.statusCode,422,response.body);
+          assert.equal(response.json().error.code,'INVALID_PASSWORD');
+        }
+      }
+    });
+    await t.test('SMTP worker delivers only to a local test sink and erases queued plaintext-equivalent data',async t=>{
+      // Real SMTP settings in .env must never leak into this local fixture.
+      const smtpEnv={SMTP_HOST:'127.0.0.1',SMTP_PORT:'0',SMTP_SECURE:'false',SMTP_REQUIRE_TLS:'false',SMTP_USER:'',SMTP_PASSWORD_FILE:'',SMTP_FROM:'DreamFly <noreply@localhost.test>'};
+      for(const [key,value] of Object.entries(smtpEnv)){
+        const previous=process.env[key];
+        t.after(()=>{if(previous===undefined)delete process.env[key];else process.env[key]=previous;});
+        process.env[key]=value;
+      }
       let captured='';
       const smtp=createServer(socket=>{socket.write('220 localhost test SMTP\r\n');let buffer='',data=false;socket.on('data',chunk=>{buffer+=chunk.toString();let i;while((i=buffer.indexOf('\r\n'))>=0){const line=buffer.slice(0,i);buffer=buffer.slice(i+2);if(data){if(line==='.') {data=false;socket.write('250 accepted\r\n');}else captured+=line+'\n';}else if(/^EHLO|^HELO/.test(line))socket.write('250 localhost\r\n');else if(line==='DATA'){data=true;socket.write('354 send\r\n');}else if(line==='QUIT'){socket.end('221 bye\r\n');}else socket.write('250 ok\r\n');}});});
-      await new Promise<void>(resolve=>smtp.listen(0,'127.0.0.1',resolve));const oldPort=process.env.SMTP_PORT;process.env.SMTP_PORT=String((smtp.address()as any).port);
+      await new Promise<void>(resolve=>smtp.listen(0,'127.0.0.1',resolve));
+      t.after(()=>new Promise<void>(resolve=>smtp.close(()=>resolve())));
+      process.env.SMTP_PORT=String((smtp.address()as any).port);
       const sent=await request('POST','/auth/email-codes',{email:'delivery@example.test',purpose:'register'});assert.equal(sent.statusCode,200);
       const {runOnce}=await import('../src/worker.js');for(let i=0;i<3;i++)await runOnce();
-      process.env.SMTP_PORT=oldPort;await new Promise<void>(resolve=>smtp.close(()=>resolve()));assert.match(captured,/delivery@example.test/);
+      assert.match(captured,/delivery@example.test/);
       const done=(await pool.query("SELECT payload,status FROM jobs WHERE payload->>'challenge_id'=$1",[sent.json().data.challenge_id])).rows[0];assert.equal(done.status,'succeeded');assert.equal(done.payload.code,undefined);
     });
     await t.test('failed verification attempts persist and reset codes cannot register accounts',async()=>{
@@ -103,9 +133,13 @@ test('PostgreSQL account, skill, model ownership and conversation integration',a
       await pool.query("UPDATE rate_limits SET expires_at=now()-interval '1 second' WHERE key=$1",[`mail:${a.user.email}`]);
       const sent=await request('POST','/auth/email-codes',{email:a.user.email,purpose:'reset_password'});assert.equal(sent.statusCode,200);const cid=sent.json().data.challenge_id;
       const job=(await pool.query("SELECT payload FROM jobs WHERE payload->>'challenge_id'=$1",[cid])).rows[0];const code=decrypt(job.payload.code,`email:${cid}`);
-      const reset=await request('POST','/auth/reset-password',{email:a.user.email,challenge_id:cid,code,password:'Changed-test-password-2026'});assert.equal(reset.statusCode,200,reset.body);
+      const reset=await request('POST','/auth/reset-password',{email:a.user.email,challenge_id:cid,code,password:'reset123'});assert.equal(reset.statusCode,200,reset.body);
       assert.equal((await request('GET','/auth/me',undefined,a)).statusCode,401);
       assert.equal((await request('POST','/auth/reset-password',{email:a.user.email,challenge_id:cid,code,password:'Changed-again-test-2026'})).statusCode,422);
+      const login=await request('POST','/auth/login',{email:a.user.email,password:'reset123'});assert.equal(login.statusCode,200,login.body);
+      const session={...login.json().data,cookie:login.cookies.map(x=>`${x.name}=${x.value}`).join('; ')};
+      const changed=await request('POST','/auth/change-password',{old_password:'reset123',password:'newpass8'},session);assert.equal(changed.statusCode,200,changed.body);
+      assert.equal((await request('POST','/auth/login',{email:a.user.email,password:'newpass8'})).statusCode,200);
     });
   }finally{await app.close();await pool.end();await maintenance.query(`DROP SCHEMA ${schema} CASCADE`);await maintenance.end();}
 });

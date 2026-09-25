@@ -14,7 +14,13 @@ npm.cmd ci --prefix server
 npm.cmd run setup:local --prefix server
 ```
 
-然后按 [本地运行说明](docs/LOCAL_DEVELOPMENT.md) 配置 PostgreSQL、执行迁移并启动前端、API 与 worker。应用不是 Python 项目；`environment.yml` 仅提供可选开发工具环境。
+然后按 [本地运行说明](docs/LOCAL_DEVELOPMENT.md) 配置并启动 PostgreSQL，在项目根目录用一个终端启动应用：
+
+```powershell
+npm.cmd run dev
+```
+
+入口会自动停止上次登记的本项目开发服务，等待端口释放，检查数据库并执行迁移，再统一启动前端、API 和 worker。验证码使用真实 SMTP；本地模拟邮箱已移除。日志在 `data/dev-logs/`；Ctrl+C 停止本次启动的服务，PostgreSQL 保持独立运行。应用不是 Python 项目；`environment.yml` 仅提供可选开发工具环境。
 
 ## 文件布局
 

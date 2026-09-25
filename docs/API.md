@@ -10,7 +10,7 @@
 
 带身份的修改请求必须携带 Cookie、`Origin: <APP_ORIGIN>`、`X-CSRF-Token: <csrf>`。恢复页面时 `GET /auth/me` 重新取得 user 与 csrf；不要把 user_id 当作鉴权信息。
 
-密码至少 12 字符。重置使用 purpose=reset_password 的邮箱挑战；`POST /auth/reset-password` 成功后旧会话失效。验证码错误次数在数据库累计，不能通过并发失败事务回滚重置。
+注册、重置和修改密码要求 8–128 位，且至少包含一个英文字母和一个数字；不要求大写字母或特殊符号，也不禁止特殊符号。登录兼容已有密码。重置使用 purpose=reset_password 的邮箱挑战；`POST /auth/reset-password` 成功后旧会话失效。验证码错误次数在数据库累计，不能通过并发失败事务回滚重置。
 
 ## Skill
 

@@ -19,12 +19,14 @@
 从项目根目录运行：
 
 ```powershell
-npm.cmd ci
-npm.cmd ci --prefix server
+npm.cmd ci --include=dev
+npm.cmd ci --include=dev --prefix server
 npm.cmd run setup:local --prefix server
 ```
 
 `setup:local` 仅创建不存在的 `server/.env` 和本地 `secrets/` 文件，不覆盖已有配置或密钥。应用不是 Python 项目，无需运行 conda.exe 或 Python。
+
+项目 `.npmrc` 将 npm 缓存和 npm 错误日志放在当前工作目录下的 `.npm-cache/`，避免系统缓存目录不可写。`npm ci` 是依赖安装命令，会先清理当前项目的 node_modules，再根据 lockfile 安装；首次准备或恢复缺失依赖时执行，不要在服务运行时反复执行。
 
 ## 3. PostgreSQL
 
@@ -57,7 +59,27 @@ npm.cmd run migrate --prefix server
 
 迁移使用事务和数据库互斥锁，已执行的迁移不会重复应用；从不自动清空已有数据库。
 
-## 4. 启动应用（各命令一个终端）
+## 4. 启动应用（推荐一个终端）
+
+PostgreSQL 已启动后，在项目根目录执行：
+
+```powershell
+cd D:\gitstore\dreamfly
+npm.cmd run dev
+```
+
+统一入口自动停止上次登记的本项目启动器、API、worker 和前端，等待端口释放，检查数据库并执行迁移后重新启动服务，使最新代码和 SMTP 配置生效。开发进程及创建时间记录在被 Git 忽略的 `data/dev-processes.json`；创建时间用于识别 PID 是否已被其他程序复用。PostgreSQL 保持运行。遇到未登记进程占用端口会明确报错，不会误停其他项目。
+
+终端输出带服务前缀，日志持续写入 `data/dev-logs/`。Ctrl+C 停止本次启动的进程；再次运行 `npm.cmd run dev` 自动替换上次服务，只保留一个由统一入口管理的 worker。当前 Windows 环境通过系统进程信息核实创建时间，并停止已登记进程树。
+
+| 进程 | 作用 | 默认端口 |
+| --- | --- | --- |
+| 前端 H5 | 页面、开发时热更新、转发 API 请求 | 5173 |
+| API | 登录鉴权、Skill、模型及对话接口 | 3001 |
+| worker | 执行排队的验证码邮件和 GitHub 同步 | 无 HTTP 端口 |
+| PostgreSQL | 独立存储账号、会话与业务数据 | 当前实例 55432 |
+
+以下单独启动命令仍保留用于调试；**不要与统一入口重复启动同一服务**：
 
 ```powershell
 # 后端 API，127.0.0.1:3001
@@ -66,18 +88,19 @@ npm.cmd run dev --prefix server
 # 邮件和 GitHub 后台任务
 npm.cmd run worker --prefix server
 
-# 可选：纯本地开发收件箱，SMTP 1025 / Web 8025
-npm.cmd run dev:mail --prefix server
-
 # H5，127.0.0.1:5173
 npm.cmd run dev:h5
 ```
 
-打开 [本地平台](http://127.0.0.1:5173) 和 [本地收件箱](http://127.0.0.1:8025)。开发收件箱只监听回环地址，不投递外部邮件；邮件仅存进程内存，重启清空。生产环境禁止运行这个收件箱。
+打开 [本地平台](http://127.0.0.1:5173)。验证码通过配置的真实 SMTP 发送，请在实际邮箱查看；本地模拟邮箱及 Mailpit 服务已移除。
 
-保持前端地址与 `APP_ORIGIN=http://127.0.0.1:5173` 一致；不要混用 localhost 和 127.0.0.1，否则状态变更请求会被 Origin 校验拒绝。前端自动通过 Vite `/api/v1` 代理调用后端。后端及 worker 源码变化后需要重启，前端支持热更新。
+开发环境的 `APP_ORIGIN` 配置为本机地址时，来源校验允许同协议、同端口的 `localhost`、`127.0.0.1` 和 `[::1]`，因此访问 `http://localhost:5173` 或 `http://127.0.0.1:5173` 都可以申请验证码。生产环境仍只允许配置的精确来源，其他域名、端口及缺失 Origin 的写请求会被拒绝。Cookie 按主机保存，切换 localhost 和 127.0.0.1 后需要重新登录。前端自动通过 Vite `/api/v1` 代理调用后端。后端及 worker 源码变化后运行 `npm.cmd run dev` 自动重启，前端支持热更新。
 
-本轮浏览器验收创建的本地示例账号为 `preview@example.test`，密码 `LocalPreviewOnly-2026`，只有普通用户权限；其中“本地验收示例”不含真实个人资料。它仅位于当前被忽略的开发数据库，并非代码中的默认账号或生产种子。也可以在页面自行注册新账号，验证码在本地收件箱查看。
+2026-09-25 启动问题排查：原根目录缺少 `dev` 脚本；前端安装目录缺少 `uni` CLI；已运行的 API/邮箱被重复启动导致 `EADDRINUSE`；npm 默认缓存目录不可写。现已补充统一入口、恢复前端开发依赖并使用项目缓存。最新一次历史 npm 安装日志虽记录成功，但排查时 CLI 文件实际不存在，无法仅凭该日志确定文件缺失的来源。
+
+Windows PowerShell 中 `npm run dev` 通常先解析为 `npm.ps1`，`npm.cmd run dev` 则明确使用 Windows 命令入口；两者调用同一 npm、执行同一 dev 脚本。`npm.cmd` 避免部分 PowerShell 执行策略对 `.ps1` 的限制，不需要修改系统策略。`npm ci`/`npm.cmd ci` 只安装依赖，不启动应用。`--prefix server` 表示使用 server 子项目；根目录的 `dev` 是统一启动，server 的 `dev` 只启动 API。
+
+此前浏览器验收创建的本地示例账号为 `preview@example.test`，密码 `LocalPreviewOnly-2026`，只有普通用户权限；其中“本地验收示例”不含真实个人资料。它仅位于当前被忽略的开发数据库，并非代码中的默认账号或生产种子。新账号请使用真实邮箱注册并接收验证码。
 
 ## 5. 邮箱身份与凭据
 
@@ -85,6 +108,36 @@ npm.cmd run dev:h5
 - 登录 Cookie 在服务端持久化；修改/重置密码或退出全部设备会撤销账号会话。
 - `server/.env.example` 提供完整 SMTP 配置；改为真实 SMTP 后需同时重启 API 和 worker。
 - 密码使用 Argon2id；API Key 和待发送验证码使用认证加密；短验证码保存带服务端密钥的摘要。
+
+### 使用 163 邮箱发送真实验证码
+
+在网易邮箱开启 SMTP 服务，将生成的 **SMTP 授权码**保存到 `secrets/smtp_password.txt`（单行纯文本）。应用只需要授权码，无需保存邮箱登录密码。然后修改 `server/.env`：
+
+```dotenv
+SMTP_HOST=smtp.163.com
+SMTP_PORT=465
+SMTP_SECURE=true
+SMTP_REQUIRE_TLS=false
+SMTP_USER=your-account@163.com
+SMTP_PASSWORD_FILE=../secrets/smtp_password.txt
+SMTP_FROM=DreamFly <your-account@163.com>
+```
+
+`SMTP_FROM` 的邮箱必须与授权的发件邮箱一致。465 端口在连接时直接启用 TLS，`SMTP_REQUIRE_TLS=false` 不会关闭加密；该选项用于要求 STARTTLS 升级。配置与授权码文件均被 Git 忽略，示例文件中不要填写真实授权码。
+
+```powershell
+# 检查 SMTP 连接与认证，不发送邮件，不依赖数据库
+npm.cmd run smtp:check --prefix server
+
+# 自动停止上次登记的服务，再读取最新配置启动
+npm.cmd run dev
+```
+
+使用统一入口启动和重启即可自动替换旧 worker。单独调试命令启动的进程不属于统一入口登记范围，不要与统一入口混用。仅启动前端或 API 不会发送队列中的邮件。
+
+注册和重置密码共用 SMTP 发送模块，继续由数据库任务队列执行与重试，发送失败也会释放连接。`smtp:check` 成功表示连接和认证可用，不代表某封邮件已进入收件箱；实际验证码需要在页面申请，并检查收件箱或垃圾邮件。已注册邮箱的注册验证码、未注册邮箱的重置验证码不会发出，以避免泄露账号状态。
+
+实现参考：[Nodemailer SMTP 配置与连接验证](https://nodemailer.com/smtp)。
 - 主密钥文件必须保留，否则已保存模型凭据无法解密。轮换时旧版本使用 `API_KEY_ENCRYPTION_KEY_V<旧版本>` 或对应 `_FILE`，完成迁移后再移除旧密钥；本轮没有自动批量轮换命令。
 
 ## 6. 模型连接

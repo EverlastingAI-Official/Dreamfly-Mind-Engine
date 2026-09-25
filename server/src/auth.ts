@@ -3,6 +3,7 @@ import argon2 from 'argon2';
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { pool, transaction, type DB } from './db.js';
 import { config } from './config.js';
+import { allowedOrigins } from './origins.js';
 import { body, check, HttpError, text } from './errors.js';
 import { token, digest, codeDigest, encrypt, equal } from './crypto.js';
 
@@ -13,7 +14,7 @@ declare module 'fastify' {
 export const uid = (r: FastifyRequest) => { check(r.user, 401, 'LOGIN_REQUIRED', '请先登录'); return r.user.id; };
 export function admin(r: FastifyRequest) { uid(r); check(r.user!.role === 'admin', 403, 'FORBIDDEN', '需要管理员权限'); }
 const email = (v: unknown) => { const e = text(v, '邮箱', 254).toLowerCase(); check(/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e), 422, 'INVALID_EMAIL', '邮箱格式无效'); return e; };
-function password(v: unknown): string { check(typeof v === 'string' && v.length >= 12 && v.length <= 128, 422, 'INVALID_PASSWORD', '密码长度须为 12–128 字符'); return v; }
+function password(v: unknown): string { check(typeof v === 'string' && v.length >= 8 && v.length <= 128 && /[A-Za-z]/.test(v) && /[0-9]/.test(v), 422, 'INVALID_PASSWORD', '密码须为 8–128 位，且包含字母和数字'); return v; }
 export async function rate(key: string, max: number, seconds: number) {
   const { rows } = await pool.query(`INSERT INTO rate_limits VALUES($1,1,now()+$2*interval '1 second')
     ON CONFLICT(key) DO UPDATE SET count=CASE WHEN rate_limits.expires_at<now() THEN 1 ELSE rate_limits.count+1 END,
@@ -31,6 +32,7 @@ async function consume(db: DB, b: Record<string, any>, purpose: string) {
   return true;
 }
 export async function auth(app: FastifyInstance) {
+  const origins = allowedOrigins(config.origin, config.production);
   const dummy = await argon2.hash(token());
   app.decorateRequest('user', undefined); app.decorateRequest('session', undefined);
   app.addHook('onRequest', async r => {
@@ -43,7 +45,7 @@ export async function auth(app: FastifyInstance) {
     }
     if (!r.routeOptions.config.public && !r.routeOptions.config.webhook) uid(r);
     if (!['GET','HEAD','OPTIONS'].includes(r.method) && !r.routeOptions.config.webhook) {
-      check(r.headers.origin === config.origin, 403, 'ORIGIN_REJECTED', '请求来源不被允许');
+      check(origins.has(r.headers.origin || ''), 403, 'ORIGIN_REJECTED', '请求来源不被允许');
       if (!r.routeOptions.config.public) check(r.session && equal(String(r.headers['x-csrf-token'] || ''), r.session.csrf), 403, 'CSRF_REJECTED', '会话校验失败，请刷新重试');
     }
   });
