@@ -8,7 +8,7 @@
 - 后端：Fastify + TypeScript；PostgreSQL 会话与业务数据；数据库迁移；邮件与 GitHub worker。
 - 格式：`packages/mind-format` 共享 Schema/迁移/导出；JSON、旧 `.mind/.mind.js`、SKILL.md、ZIP；素材保持私有直至明确发布。
 - 模型：OpenAI 兼容、Anthropic Messages、Gemini generateContent 三协议；用户自己的加密连接档案；流式文本和用量。
-- GitHub：App 安装与用户授权、仓库验证、单版本提交、PR 模式、去重恢复、失败重试、签名 webhook。
+- GitHub：统一 Owner PAT、自动版本提交、独立后台队列、去重恢复、失败重试。
 
 当前 Web 入口为 `src/pages/platform/index.vue`。旧页面源码保留作参考，但从路由表移除；新平台替代原有缺页路由和模拟控制台，不再运行浏览器直连模型代码。新页面优先 H5，使用原生浏览器表单控件；本次没有验证小程序或 App 编译。
 
@@ -140,39 +140,71 @@ npm.cmd run dev
 实现参考：[Nodemailer SMTP 配置与连接验证](https://nodemailer.com/smtp)。
 - 主密钥文件必须保留，否则已保存模型凭据无法解密。轮换时旧版本使用 `API_KEY_ENCRYPTION_KEY_V<旧版本>` 或对应 `_FILE`，完成迁移后再移除旧密钥；本轮没有自动批量轮换命令。
 
+## Skill 创建与发布
+
+- 名称默认“昵称的mindcopy”，可修改。创建时分配 UUID，包名为只读的 `mind-<UUID>`，使用灰色字体和不可更改提示，保存和导入新 Skill 均保持这一规则。用途说明输入已移除，包内 description 自动生成。
+- 创建页隐藏版本。点击“上传记忆”完成保存、发布，等待每周同步；“上传更新”由服务端递增版本，“保存草稿”只暂存内容与勾选范围。初始版本为 `1.0.0`。
+- 图片与声音分开上传，分别接受 PNG/JPEG/WebP 和 WAV/OGG/MP3，单文件不超过 10 MB（10 × 1024 × 1024 字节）。前端选择文件后检查，后端上传、包内导入及保存/发布均执行限制。
+- 创建时人格与表达方式、自我认知和首条记忆均为空；三类内容全部填写后才能保存草稿或提交。时间仍选填，额外空白记忆需要填写或移除。
+- 发布前必须勾选拥有内容使用与发布授权、同意公开范围的合规确认；修改内容或公开范围后确认自动取消。后端重新检查完整性和确认状态，并将确认标记保存在发布版本中；未接入自动内容审核。
+- 发布预览默认允许目录、交互、下载，新记忆默认勾选。关闭公共目录同时关闭交互、下载，重新开启目录后可自行重新勾选。
+- 不再提供 GitHub 开关或逐项素材分发选择。允许下载会每周同步最新版本到 GitHub，并分发全部图片、声音；记忆仍可逐条取消公开。管理员统一配置 Owner 凭据和目标仓库，用户无需绑定 GitHub；配置缺失不影响平台发布、查询、下载。上传后显示等待每周同步，批次开始后可查看状态、错误、重试入口和提交链接。
+
 ## 6. 模型连接
 
-登录后进入“模型连接”，选择厂商、输入自己的 API Key、填写模型 ID并确认发送范围，保存后测试连接，再设为默认。
+登录后进入“模型连接”，填写连接名称、选择厂商并输入自己的 API Key。API 地址由厂商自动填充且不可编辑；离开密钥输入框时自动获取模型，也可点击“获取模型列表”。从下拉框选择模型，确认发送范围后点击“保存并测试”，通过后可设为默认。获取模型不需要先保存配置或填写模型 ID，也不会创建连接记录。
 
-- 列模型失败时可以手动填写 ID；部分厂商/模型不支持相同参数，请根据错误调整配置。
+- 模型列表失败会显示原因并允许重试；更换厂商或密钥会清空旧模型选择。编辑已有连接可使用服务端保存的密钥获取列表，无需再次输入。
+- 列表适配参考厂商接口：[Gemini 分页和生成方法](https://ai.google.dev/api/models)、[Anthropic 分页](https://platform.claude.com/docs/en/api/models/list)、[SiliconFlow 聊天模型筛选](https://api-docs.siliconflow.cn/docs/api/models-get)。获取列表成功仅说明目录可读取，具体模型仍需通过连接测试。
+- 输出上限、超时和输入字符预算不在用户表单显示，新连接采用后端默认值；已有连接保留原参数。页面只提供预设厂商，已有自定义连接的地址只读。
 - 测试连接发送最小真实请求，可能产生用量；本轮未使用真实厂商密钥进行收费调用。
 - 输入字符预算是应用层近似预算，不是各厂商的精确 token 上限；超长人格/当前消息会拒绝，记忆按完整片段选择，历史按窗口保留。
 - 开始会话后固定厂商/模型配置；默认连接变化不影响旧会话。旧会话可显式切换后续模型。
 - 自定义连接仅接受公开 HTTPS/443，实际连接地址经过 DNS 校验和绑定，拒绝内网、回环和元数据地址。
-- 若本机代理启用了将厂商域名解析为 `198.18.x.x` 的 Fake-IP，地址校验会拒绝它；使用能够返回真实公网地址的 DNS/网络配置再联调，不能为此放开任意内网访问。当前环境观察到了这种解析情况。
+- 固定厂商 HTTPS 地址兼容代理的 `198.18.0.0/15` Fake-IP 解析，仍保持 TLS 主机名验证、不跟随重定向；其他目标不适用此例外，内网、回环和元数据地址仍被拒绝。自定义地址保存时仍要求真实公网解析。
 
-## 7. GitHub App
+## 7. 统一仓库 GitHub 同步
 
-创建并安装自己的 GitHub App，至少授权 Contents 读写，PR 模式额外授权 Pull requests 读写。配置：
+Owner 创建细粒度 PAT，仅选择目标仓库，授权 Contents 读写。用户无需 GitHub 账号、App 授权或 PR。令牌只保存在服务端的密钥文件中，普通用户仅选择公开范围。
 
 ```dotenv
 GITHUB_SYNC_ENABLED=true
-GITHUB_APP_SLUG=your-app-slug
-GITHUB_APP_ID=...
-GITHUB_APP_CLIENT_ID=...
-GITHUB_APP_CLIENT_SECRET_FILE=../secrets/github_client_secret.txt
-GITHUB_APP_PRIVATE_KEY_FILE=../secrets/github_private_key.pem
-GITHUB_WEBHOOK_SECRET_FILE=../secrets/github_webhook_secret.txt
-GITHUB_CALLBACK_URL=http://127.0.0.1:5173/api/v1/github/callback
+GITHUB_OWNER=your-owner
+GITHUB_REPOSITORY=your-memory-repository
+GITHUB_BRANCH=main
+GITHUB_OWNER_TOKEN_FILE=../secrets/github_owner_token.txt
+GITHUB_SYNC_TIMEZONE=Asia/Shanghai
+GITHUB_SYNC_WEEKDAY=1
+GITHUB_SYNC_TIME=03:00
+WORKER_QUEUE=all
 ```
 
-用户授权回调地址需与配置一致。在页面点击绑定：先安装 App 到指定仓库，再进行当前用户授权。后端用用户令牌验证安装/仓库访问，并用 App 安装令牌提交；不能通过伪造 installation_id 借用其他人的权限。
+目标分支须允许此账号直接提交；建议准备独立的内容仓库。空仓库首次同步会创建 README 初始化，已有仓库需配置存在的分支。目录是 `skills/<用户ID>/<Skill ID>/<版本>/<包名>/`；公开仓库的所有文件都可访问，目录不是访问权限边界。平台下架不会删除仓库历史。
 
-按 Skill 设置仓库、已有目标分支及 commit/PR 模式，在发布预览中勾选 GitHub 分发。worker 自动创建提交；公开内容与在线私有草稿分开。仓库为空时直接提交模式会创建初始化 README；PR 模式需要已有基础分支。
+修改配置后重启 API 和 worker。管理员可在 GitHub 同步页检查连接；检查只读取仓库、分支，不验证实际写入，Contents 权限、保护规则和令牌有效期仍需配置正确。任务已入队后不自动改变目标，目标变更会停止旧任务。
 
-PR 创建只代表 `awaiting_merge`。合并状态由签名 webhook 更新，App 需订阅 Pull request 和 Installation 事件；本机没有公共 webhook 地址时，PR 状态将保持等待，直到配置可到达的回调。本轮没有设置公网隧道或开放服务器。
+上传只创建平台版本。GitHub worker 每分钟检查持久化计划，默认每周一 03:00（Asia/Shanghai）生成批次；星期使用 1–7，时间使用 HH:mm。每个 Skill 选择该次扫描时最新已发布、已授权版本，未选记忆不导出。每项一个任务和提交，保留版本目录。无变化时只记录空批次，不创建远端提交。
 
-GitHub 用户授权过期或撤销后任务会要求重新绑定。OAuth 用户令牌保存在加密连接中，本轮不自动刷新过期用户令牌。App 配置缺失时页面明确显示未启用，不虚构同步成功。
+调度事务原子记录批次、任务和下次时间，多 worker 不重复创建。同一任务失败后跨周复用 ID，避免重复远端提交。进程重启保留进度；错过多周恢复后补做一次最新内容同步。更改时间配置后，下一次调度检查改为新规则的下一个执行时间，不立即导出。GitHub 关闭时不领取同步任务；缺少凭据时记录错误并保留到期时间，配置修复后可补执行。
+
+默认 `WORKER_QUEUE=all` 在同一进程中独立运行邮件和 GitHub 两个异步循环，各自一次领取一个任务。部署时可分别设置 `WORKER_QUEUE=email`、`WORKER_QUEUE=github` 启动独立进程。按到期任务的创建顺序领取，单项退避期间允许其他任务继续；仓库/分支锁忙时延后且不增加失败次数。同一分支的吞吐不会随 worker 数量线性增长。
+
+网络或限流错误按延迟重试，最多五次；401/权限或分支错误需要管理员修复后重试。内容与平台发布不会因为同步失败被撤销。取消公开或下架会阻止后续旧任务，但已完成的远端提交不会删除。
+
+### 从 App 模式迁移
+
+1. 停止旧 API 和 worker，先检查旧任务的仓库目标、状态及已创建 PR。
+2. 配置 Owner PAT 与统一仓库，运行 `npm.cmd --prefix server run migrate`。
+3. 迁移 002 增加草稿修订号、草稿范围和提交请求记录；旧 App 的 queued/running/awaiting_merge 任务转为 failed，保留原 payload、远端链接和说明。旧表保留用于核对，不迁移令牌、不改写旧任务目标。
+4. 启动新版服务。旧任务不能在新版接口中重试；管理员在原仓库核对、处理旧 PR。新目标在下次每周批次接收当前已授权版本，不因迁移额外创建平台版本。
+
+### 从即时同步迁移到每周同步
+
+1. 停止旧 API 和 worker，避免旧代码在迁移后继续创建即时任务。
+2. 在 server 目录执行 `npm.cmd run migrate`，应用 003_weekly_github.sql。迁移保存默认下次执行时间，增加批次关联表；旧 Owner queued/running/failed 任务转为 skipped，保留 ID、内容和远端结果，成功记录不变。
+3. 启动新 API 和 worker。最新版本若对应旧任务，周调度复用原标识，以识别可能已完成的远端提交。
+4. 配置 Owner、仓库和 PAT 后开启 GITHUB_SYNC_ENABLED。无需重新上传已有已发布内容。未配置期间平台仍可正常发布、搜索和下载。
+
 
 ## 8. 校验与维护
 
@@ -201,4 +233,4 @@ npm.cmd run admin --prefix server -- registered-email@example.com
 
 已通过：H5 构建、TypeScript 编译、18 项测试（包含嵌套集成检查），以及浏览器登录/草稿保存/版本发布/重启会话恢复。
 
-真实外部联调仍需你的 SMTP、模型和 GitHub App 配置：未验证真实邮件投递、收费模型响应、真实仓库提交/PR 合并 webhook。服务器 Docker 部署按要求暂缓。语音素材上传不等于语音克隆，MCP/A2A、群聊、微调等仍按计划后续路线处理。
+真实外部联调仍需你的 SMTP、模型和 GitHub Owner PAT 与仓库配置：未验证真实邮件投递、收费模型响应、真实仓库提交。服务器 Docker 部署按要求暂缓。语音素材上传不等于语音克隆，MCP/A2A、群聊、微调等仍按计划后续路线处理。

@@ -5,6 +5,23 @@ import { parseMind,validateMind,emptyMind,skillMarkdown,importPackage,zipFiles }
 import { sseEvents,publicAddress,requestConfig } from '../src/providers.js';
 import { publicMind } from '../src/skills.js';
 import { encrypt,decrypt } from '../src/crypto.js';
+// @ts-ignore Shared browser/server publication rules.
+import { defaultPublication, publicationSettings, skillSubmissionIssues } from '../../packages/mind-format/index.js';
+
+test('submission feedback requires all three content fields and rejects blank memory entries',()=>{
+  const mind=emptyMind();mind.persona.instructions='';
+  assert.equal(skillSubmissionIssues(mind).length,3);
+  mind.persona.instructions='表达方式';mind.persona.self_description='自我认知';mind.memory.fragments=[{id:'one',content:'真实经历'}];
+  assert.deepEqual(skillSubmissionIssues(mind),[]);
+  mind.memory.fragments.push({id:'two',content:' \n '});assert.equal(skillSubmissionIssues(mind).length,1);
+});
+
+test('new skills select all permissions and memories, with download including every asset',()=>{
+  const mind=emptyMind();mind.memory.fragments=[{id:'one',content:'memory'}];mind.assets={image:'assets/image.png',audio:'assets/audio.wav'};
+  const defaults=defaultPublication(mind);assert.deepEqual(defaults,{listed:true,chat:true,download:true,memory_ids:['one']});
+  const publication=publicationSettings(mind,defaults);assert.equal(publication.github,true);assert.deepEqual(publication.asset_keys,['image','audio']);
+  assert.equal(publicationSettings(mind,{...defaults,download:false,github:true}).github,false);
+});
 
 test('existing mind samples migrate with valid personas and memory',()=>{
   const folders=['../src/pages/consciousness/interaction','../src/static/consciousness','../src/static/minds'];let count=0;

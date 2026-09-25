@@ -21,13 +21,19 @@ export const providers = [
 export function publicAddress(address:string){
   try {let a=ipaddr.parse(address);if(a.kind()==='ipv6'&&(a as ipaddr.IPv6).isIPv4MappedAddress())a=(a as ipaddr.IPv6).toIPv4Address();return a.range()==='unicast';}catch{return false;}
 }
-export async function checkedURL(raw:string){
+export function providerProxyAddress(raw:string,address:string){
+  const url=new URL(raw);
+  const preset=providers.some(p=>p.id!=='custom' && url.origin===new URL(p.base_url).origin && (url.pathname===new URL(p.base_url).pathname || url.pathname.startsWith(new URL(p.base_url).pathname.replace(/\/$/,'')+'/')));
+  // Local proxy Fake-IP mode uses this range. Only fixed vendor endpoints may use it.
+  return preset && ipaddr.isValid(address) && ipaddr.parse(address).kind()==='ipv4' && ipaddr.parse(address).match(ipaddr.parseCIDR('198.18.0.0/15'));
+}
+export async function checkedURL(raw:string,allowProviderProxy=false){
   const url=new URL(raw);check(url.protocol==='https:' && !url.username && !url.password && (!url.port||url.port==='443') && !url.hash,422,'UNSAFE_ENDPOINT','仅支持公开 HTTPS 地址和 443 端口');
   const addresses=await dns.lookup(url.hostname.replace(/^\[|\]$/g,''),{all:true});
-  check(addresses.length && addresses.every(x=>publicAddress(x.address)),422,'UNSAFE_ENDPOINT','不能访问回环、私有或保留网络');return {url,addresses};
+  check(addresses.length && addresses.every(x=>publicAddress(x.address)||(allowProviderProxy&&providerProxyAddress(raw,x.address))),422,'UNSAFE_ENDPOINT','不能访问回环、私有或保留网络');return {url,addresses};
 }
 export async function upstream(raw:string,method:string,headers:Record<string,string>,data:unknown,signal?:AbortSignal,timeout=120000){
-  const {url,addresses}=await checkedURL(raw);
+  const {url,addresses}=await checkedURL(raw,true);
   return new Promise<import('node:http').IncomingMessage>((resolve,reject)=>{
     // Bind the connection to the addresses just validated, while preserving hostname/SNI.
     const lookup:any=(_host:string,options:any,cb:any)=>options.all?cb(null,addresses):cb(null,addresses[0].address,addresses[0].family);
@@ -50,6 +56,39 @@ export async function* sseEvents(stream:AsyncIterable<Uint8Array>):AsyncGenerato
   buffer+=decoder.decode();check(!buffer.trim()||buffer.trim().startsWith(':'),502,'INCOMPLETE_STREAM','模型流未完整结束');
 }
 export type Message={role:string;content:string};
+function modelHeaders(protocol:string,key:string):Record<string,string>{
+  if(protocol==='anthropic-messages')return {'x-api-key':key,'anthropic-version':'2023-06-01'};
+  if(protocol==='gemini-generate-content')return {'x-goog-api-key':key};
+  return {Authorization:`Bearer ${key}`};
+}
+type ModelEndpoint={provider:string;protocol:string;base_url:string};
+type ModelOption={id:string;name:string};
+export async function listModels(p:ModelEndpoint,key:string,request=async(url:string,headers:Record<string,string>)=>responseJSON(await upstream(url,'GET',headers,undefined,undefined,30000))):Promise<ModelOption[]>{
+  const url=new URL(`${p.base_url}${p.protocol==='anthropic-messages'?'/v1':''}/models`);
+  if(p.provider==='siliconflow')url.searchParams.set('sub_type','chat');
+  if(p.protocol==='anthropic-messages')url.searchParams.set('limit','1000');
+  if(p.protocol==='gemini-generate-content')url.searchParams.set('pageSize','1000');
+  const models=new Map<string,ModelOption>();
+  let next:string|undefined;
+  do{
+    const payload=await request(url.href,modelHeaders(p.protocol,key));
+    const entries=payload.data||payload.models;
+    check(Array.isArray(entries),502,'INVALID_MODEL_LIST','厂商返回了无法识别的模型列表');
+    for(const entry of entries){
+      if(p.protocol==='gemini-generate-content'&&!entry.supportedGenerationMethods?.includes('generateContent'))continue;
+      if(p.provider==='openrouter'&&entry.architecture?.output_modalities&&!entry.architecture.output_modalities.includes('text'))continue;
+      const model=String(entry.id||entry.name||'').replace(/^models\//,'');
+      if(!model)continue;
+      models.set(model,{id:model,name:entry.display_name||entry.displayName||entry.name||model});
+    }
+    const cursor=p.protocol==='gemini-generate-content'?payload.nextPageToken:p.protocol==='anthropic-messages'&&payload.has_more?payload.last_id:undefined;
+    check(!cursor||cursor!==next,502,'INVALID_MODEL_LIST','厂商模型列表分页异常');
+    next=cursor;
+    if(next)url.searchParams.set(p.protocol==='gemini-generate-content'?'pageToken':'after_id',next);
+  }while(next);
+  return [...models.values()].sort((a,b)=>a.name.localeCompare(b.name));
+}
+export type ModelListTransport=(p:ModelEndpoint,key:string)=>Promise<ModelOption[]>;
 export function requestConfig(p:any,messages:Message[],stream=true){
   const system=messages.filter(x=>x.role==='system').map(x=>x.content).join('\n');const conversation=messages.filter(x=>x.role!=='system');
   const max_tokens=p.parameters?.max_tokens||1024;const headers:Record<string,string>={'Content-Type':'application/json'};
@@ -84,8 +123,19 @@ export async function profile(user:string,profileId:string){
 }
 const view=(p:any)=>({id:p.id,name:p.name,provider:p.provider,protocol:p.protocol,base_url:p.base_url,model:p.model,parameters:p.parameters,consent:p.consent,verified_at:p.verified_at,api_key_configured:!!p.key_cipher});
 export function snapshot(p:any){return {provider:p.provider,protocol:p.protocol,base_url:p.base_url,model:p.model,parameters:p.parameters};}
-export async function providerRoutes(app:FastifyInstance){
+export async function providerRoutes(app:FastifyInstance,discover:ModelListTransport=listModels){
   app.get('/model-providers',async()=>providers);
+  app.post('/model-providers/:id/models',async r=>{
+    const user=uid(r),b=body(r);await rate(`model-list:${user}`,10,60);
+    const preset=providers.find(p=>p.id===params(r).id);check(preset,422,'INVALID_PROVIDER','未知厂商');
+    const saved=b.profile_id?await profile(user,b.profile_id):null;
+    const matching=saved?.provider===preset.id?saved:null;
+    check(preset.id!=='custom'||matching,422,'INVALID_PROVIDER','请选择预设厂商');
+    const key=b.api_key?text(b.api_key,'API Key',4096):matching?.key_cipher?decrypt(matching.key_cipher,`${user}:${matching.id}`):'';
+    check(key,422,'NO_KEY','请先输入 API Key，再获取模型列表');
+    const endpoint=preset.id==='custom'?matching:{provider:preset.id,protocol:preset.protocol,base_url:preset.base_url};
+    return discover(endpoint,key);
+  });
   app.get('/model-profiles',async r=>({profiles:(await pool.query('SELECT * FROM model_profiles WHERE user_id=$1 ORDER BY created_at',[uid(r)])).rows.map(view),default_profile_id:(await pool.query('SELECT default_profile_id FROM user_preferences WHERE user_id=$1',[uid(r)])).rows[0]?.default_profile_id||null}));
   async function save(r:any,existing?:any){
     const b=body(r),user=uid(r),profileId=existing?.id||randomUUID();const preset=providers.find(x=>x.id===b.provider);check(preset,422,'INVALID_PROVIDER','未知厂商');
@@ -114,7 +164,6 @@ export async function providerRoutes(app:FastifyInstance){
   });
   app.post('/model-profiles/:id/models',async r=>{
     await rate(`model-list:${uid(r)}`,10,60);const p=await profile(uid(r),params(r).id);check(p.key_cipher,422,'NO_KEY','请输入 API Key');
-    const req=requestConfig(p,[]);const payload=await responseJSON(await upstream(`${p.base_url}${p.protocol==='anthropic-messages'?'/v1':''}/models`,'GET',req.headers,undefined,undefined,30000));
-    return (payload.data||payload.models||[]).slice(0,2000).map((x:any)=>({id:String(x.id||x.name).replace(/^models\//,''),name:x.displayName||x.name||x.id}));
+    return discover(p,decrypt(p.key_cipher,`${p.user_id}:${p.id}`));
   });
 }

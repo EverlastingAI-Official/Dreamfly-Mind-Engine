@@ -1,12 +1,71 @@
 import { randomUUID } from 'node:crypto';
+import { isDeepStrictEqual } from 'node:util';
 import { mkdir, writeFile, readFile, unlink } from 'node:fs/promises';
 import path from 'node:path';
 import type { FastifyInstance } from 'fastify';
-import { pool, transaction } from './db.js';
+import { pool, transaction, type DB } from './db.js';
 import { uid, admin } from './auth.js';
 import { body, check, id, params, query, text } from './errors.js';
 import { config } from './config.js';
-import { importPackage, validateMind, parseMind, skillMarkdown, zipFiles } from './format.js';
+import { importPackage, validateMind, validateSkillSubmission, parseMind, skillMarkdown, zipFiles, skillSlug, publicationSettings, assetMaxBytes } from './format.js';
+
+function publicationFor(content:any,choices:any){
+  const pub=publicationSettings(content,choices);
+  check(pub.memory_ids.every((x:string)=>content.memory.fragments.some((m:any)=>m.id===x)),422,'INVALID_PUBLICATION','发布范围包含不存在的记忆');
+  return pub;
+}
+
+// Lock one Skill for both draft writes and publication. Network I/O belongs to the worker.
+async function writeSkill(user:string,skill:string,b:any,publish:boolean,create:boolean){
+  if(publish){id(b.request_id);check(b.compliance_confirmed===true,422,'COMPLIANCE_CONFIRMATION_REQUIRED','请确认拥有内容的使用与发布授权，并同意当前公开范围');}
+  return transaction(async db=>{
+    if(create){
+      check(b.content,422,'INVALID_SKILL','请提供 Skill 内容');
+      const name=b.content.name||'我的 MindCopy';
+      const initial={...b.content,slug:skillSlug(skill),name,version:'1.0.0',description:`${name}的人格与记忆`};
+      await db.query('INSERT INTO skills(id,owner_id,slug,name,description,draft,revision) VALUES($1,$2,$3,$4,$5,$6,0) ON CONFLICT(id) DO NOTHING',[skill,user,initial.slug,name,initial.description,initial]);
+    }
+    const s=(await db.query('SELECT * FROM skills WHERE id=$1 AND owner_id=$2 FOR UPDATE',[skill,user])).rows[0];
+    check(s,404,'NOT_FOUND','未找到 Skill');check(s.status!=='blocked',403,'BLOCKED','此 Skill 已被管理下架');
+    if(publish){
+      const previous=(await db.query('SELECT request,result FROM skill_submissions WHERE skill_id=$1 AND request_id=$2',[skill,b.request_id])).rows[0];
+      if(previous){check(isDeepStrictEqual(previous.request,JSON.parse(JSON.stringify(b))),409,'REQUEST_REUSED','同一请求标识不能用于不同内容');return previous.result;}
+    }
+    check(Number.isInteger(b.revision)&&b.revision===s.revision,409,'DRAFT_CHANGED','内容已在其他页面更新，请刷新后再提交');
+    const supplied=b.content||s.draft;
+    check(s.revision===0||supplied.slug===s.slug,422,'SLUG_READONLY','包名由系统分配，不能修改');
+    const content=validateSkillSubmission({...supplied,slug:s.slug,version:s.draft.version,name:supplied.name||s.name,description:`${supplied.name||s.name}的人格与记忆`});
+    await validateAssets(content,user,db);
+    const choices=b.publication||(publish?b:(Object.keys(s.draft_publication).length?s.draft_publication:{listed:true,chat:true,download:true,memory_ids:content.memory.fragments.map((m:any)=>m.id)}));
+    const pub=publicationFor(content,choices);
+    const changed=s.revision===0||!isDeepStrictEqual(content,s.draft)||!isDeepStrictEqual(pub,s.draft_publication);
+    let revision=s.revision+(changed?1:0);
+    await db.query('UPDATE skills SET name=$1,description=$2,draft=$3,draft_publication=$4,revision=$5,updated_at=now() WHERE id=$6',[content.name,content.description,content,pub,revision,skill]);
+    let result:any={id:skill,slug:s.slug,revision,published:false};
+    if(!publish)return result;
+    const publishedPub={...pub,compliance_confirmed:true};
+    const current=s.published_version_id?(await db.query('SELECT * FROM skill_versions WHERE id=$1',[s.published_version_id])).rows[0]:null;
+    if(s.status==='published'&&current&&isDeepStrictEqual({...content,version:current.version},current.content)&&isDeepStrictEqual(publishedPub,current.publication)){
+      result={...result,published:true,version_id:current.id,version:current.version,unchanged:true};
+    }else{
+      const latest=(await db.query("SELECT version FROM skill_versions WHERE skill_id=$1 ORDER BY split_part(version,'.',1)::numeric DESC,split_part(version,'.',2)::numeric DESC,split_part(version,'.',3)::numeric DESC LIMIT 1",[skill])).rows[0];
+      const parts=latest?.version.split('.');content.version=parts?`${parts[0]}.${parts[1]}.${BigInt(parts[2])+1n}`:'1.0.0';
+      const version=randomUUID();
+      await db.query('INSERT INTO skill_versions(id,skill_id,version,content,publication) VALUES($1,$2,$3,$4,$5)',[version,skill,content.version,content,publishedPub]);
+      for(const ref of Object.values(content.assets)as string[])await db.query('INSERT INTO version_assets VALUES($1,$2)',[version,assetId(ref)]);
+      revision++;
+      await db.query("UPDATE skills SET draft=$1,published_version_id=$2,publication=$3,status='published',revision=$4 WHERE id=$5",[content,version,publishedPub,revision,skill]);
+      result={...result,revision,published:true,version_id:version,version:content.version};
+    }
+    result.sync_job_id=null;
+    result.sync_policy=pub.github?'weekly':'disabled';
+    await rememberSubmission(db,skill,b,result);return result;
+  });
+}
+
+async function rememberSubmission(db:DB,skill:string,b:any,result:any){
+  await db.query('INSERT INTO skill_submissions(skill_id,request_id,request,result) VALUES($1,$2,$3,$4)',[skill,b.request_id,b,result]);
+}
 
 export function publicMind(content:any,publication:any){
   const m=structuredClone(content);m.memory.fragments=m.memory.fragments.filter((x:any)=>(publication.memory_ids||[]).includes(x.id));
@@ -22,8 +81,8 @@ export async function accessibleVersion(versionId:string,user:string,capability=
   return {...s,content:s.owner_id===user?s.content:publicMind(s.content,s.publication)};
 }
 function assetId(reference:string){return id(reference.replace(/^assets\//,'').split('.')[0]);}
-async function validateAssets(content:any,user:string){
-  for(const ref of Object.values(content.assets) as string[]){const a=(await pool.query('SELECT * FROM assets WHERE id=$1 AND user_id=$2',[assetId(ref),user])).rows[0];check(a,422,'MISSING_ASSET','素材不存在或不属于当前用户');}
+async function validateAssets(content:any,user:string,db:DB=pool){
+  for(const ref of Object.values(content.assets) as string[]){const a=(await db.query('SELECT * FROM assets WHERE id=$1 AND user_id=$2',[assetId(ref),user])).rows[0];check(a,422,'MISSING_ASSET','素材不存在或不属于当前用户');check(a.size<=assetMaxBytes,422,'ASSET_TOO_LARGE','素材超过 10 MB，请移除后重新上传');}
 }
 function media(buffer:Buffer){
   if(buffer.subarray(0,8).equals(Buffer.from([137,80,78,71,13,10,26,10])))return ['image/png','png'];
@@ -35,7 +94,7 @@ function media(buffer:Buffer){
   throw new Error('仅支持 PNG、JPEG、WebP、WAV、OGG、MP3 素材');
 }
 export async function storeAsset(user:string,name:string,data:Buffer){
-  check(data.length<=20*1024*1024,413,'ASSET_TOO_LARGE','素材最大 20 MiB');const [mime,ext]=media(data),asset=randomUUID();
+  check(data.length<=assetMaxBytes,413,'ASSET_TOO_LARGE','素材最大 10 MB');const [mime,ext]=media(data),asset=randomUUID();
   await mkdir(config.assets,{recursive:true});await writeFile(path.join(config.assets,asset),data,{flag:'wx'});
   try{await pool.query('INSERT INTO assets(id,user_id,name,mime,size) VALUES($1,$2,$3,$4,$5)',[asset,user,name.slice(0,200),mime,data.length]);}
   catch(e){await unlink(path.join(config.assets,asset));throw e;}
@@ -55,7 +114,11 @@ async function upload(r:any,save:boolean){
 export async function skillRoutes(app:FastifyInstance){
   app.post('/skills/validate',async r=>r.isMultipart()?upload(r,false):{mind:validateMind(parseMind(body(r).content).mind),warnings:[]});
   app.post('/skills/import',async r=>upload(r,true));
-  app.post('/assets',async r=>{const f=await r.file();check(f,422,'NO_FILE','请选择素材');return storeAsset(uid(r),f.filename,await f.toBuffer());});
+  app.post('/assets',async r=>{
+    const f=await r.file();check(f,422,'NO_FILE','请选择素材');const data=await f.toBuffer(),kind=(f.fields.kind as {value?:unknown})?.value;
+    if(kind!==undefined){check(kind==='image'||kind==='audio',422,'INVALID_ASSET_KIND','请选择图片或声音素材');check(media(data)[0].startsWith(`${kind}/`),422,'ASSET_KIND_MISMATCH',kind==='image'?'此入口仅接受图片':'此入口仅接受声音');}
+    return storeAsset(uid(r),f.filename,data);
+  });
   app.get('/assets',async r=>(await pool.query('SELECT id,name,mime,size FROM assets WHERE user_id=$1 ORDER BY created_at DESC',[uid(r)])).rows);
   app.get('/assets/:id',async(r,p)=>{
     const a=(await pool.query('SELECT * FROM assets WHERE id=$1',[id(params(r).id)])).rows[0];check(a,404,'NOT_FOUND','素材不存在');
@@ -72,14 +135,11 @@ export async function skillRoutes(app:FastifyInstance){
     const deleted=await pool.query('DELETE FROM assets WHERE id=$1 AND user_id=$2 RETURNING id',[a,uid(r)]);check(deleted.rowCount,404,'NOT_FOUND','素材不存在');await unlink(path.join(config.assets,a));return {deleted:true};
   });
   app.post('/skills',async r=>{
-    const content=validateMind(body(r).content);await validateAssets(content,uid(r));const skill=randomUUID();
-    await pool.query('INSERT INTO skills(id,owner_id,slug,name,description,draft) VALUES($1,$2,$3,$4,$5,$6)',[skill,uid(r),content.slug,content.name,content.description,content]);return {id:skill};
+    const b=body(r),skill=b.id?id(b.id).toLowerCase():randomUUID();
+    return writeSkill(uid(r),skill,{...b,revision:b.revision??0,content:{...b.content,name:b.content?.name||`${r.user!.display_name}的mindcopy`}},false,true);
   });
-  app.patch('/skills/:id',async r=>{
-    const s=await ownedSkill(params(r).id,uid(r));const m=validateMind(body(r).content);await validateAssets(m,uid(r));
-    check(s.status!=='blocked',403,'BLOCKED','此 Skill 已被管理下架');
-    await pool.query('UPDATE skills SET slug=$1,name=$2,description=$3,draft=$4,updated_at=now() WHERE id=$5',[m.slug,m.name,m.description,m,s.id]);return {id:s.id};
-  });
+  app.patch('/skills/:id',async r=>writeSkill(uid(r),id(params(r).id),body(r),false,false));
+  app.post('/skills/:id/submit',async r=>writeSkill(uid(r),id(params(r).id),body(r),true,true));
   app.get('/skills',{config:{public:true}},async r=>{
     const q=query(r),mine=q.scope==='mine',user=mine?uid(r):null,term=(q.search||'').slice(0,200);const page=Math.max(1,Number(q.page)||1);
     return (await pool.query(`SELECT s.id,s.owner_id,s.slug,CASE WHEN $1::uuid IS NULL THEN v.content->>'name' ELSE s.name END AS name,
@@ -96,29 +156,11 @@ export async function skillRoutes(app:FastifyInstance){
     const v=(await pool.query('SELECT content FROM skill_versions WHERE id=$1',[s.published_version_id])).rows[0];return {id:s.id,name:v.content.name,description:v.content.description,author:s.author,published_version_id:s.published_version_id,publication:{chat:!!s.publication.chat,download:!!s.publication.download},versions};
   });
   app.post('/skills/:id/versions',async r=>{
-    const s=await ownedSkill(params(r).id,uid(r));validateMind(s.draft);await validateAssets(s.draft,uid(r));const version=randomUUID();
+    const s=await ownedSkill(params(r).id,uid(r));validateSkillSubmission(s.draft);await validateAssets(s.draft,uid(r));const version=randomUUID();
     await transaction(async db=>{await db.query('INSERT INTO skill_versions(id,skill_id,version,content) VALUES($1,$2,$3,$4)',[version,s.id,s.draft.version,s.draft]);for(const ref of Object.values(s.draft.assets)as string[])await db.query('INSERT INTO version_assets VALUES($1,$2)',[version,assetId(ref)]);});return {id:version};
   });
-  app.post('/skills/:id/publish',async r=>{
-    const b=body(r),s=await ownedSkill(params(r).id,uid(r));check(s.status!=='blocked',403,'BLOCKED','此 Skill 已被管理下架');validateMind(s.draft);await validateAssets(s.draft,uid(r));
-    const pub={listed:b.listed===true,chat:b.chat===true,download:b.download===true,github:b.github===true,memory_ids:Array.isArray(b.memory_ids)?b.memory_ids:[],asset_keys:Array.isArray(b.asset_keys)?b.asset_keys:[]};
-    check(pub.memory_ids.every(x=>s.draft.memory.fragments.some((m:any)=>m.id===x)) && pub.asset_keys.every(x=>Object.hasOwn(s.draft.assets,x)),422,'INVALID_PUBLICATION','发布范围包含不存在的记忆或素材');
-    return transaction(async db=>{
-      const current=(await db.query('SELECT draft,status FROM skills WHERE id=$1 FOR UPDATE',[s.id])).rows[0];
-      check(current.status!=='blocked'&&JSON.stringify(current.draft)===JSON.stringify(s.draft),409,'DRAFT_CHANGED','草稿已变更或下架，请刷新后重新发布');
-      let v=(await db.query('SELECT * FROM skill_versions WHERE skill_id=$1 AND version=$2',[s.id,s.draft.version])).rows[0];
-      if(v){check(JSON.stringify(v.content)===JSON.stringify(JSON.parse(JSON.stringify(s.draft))),409,'VERSION_EXISTS','版本号已存在，请增加版本号');check(!Object.keys(v.publication).length,409,'ALREADY_PUBLISHED','此版本已发布，请创建新版本');}
-      else{v={id:randomUUID()};await db.query('INSERT INTO skill_versions(id,skill_id,version,content) VALUES($1,$2,$3,$4)',[v.id,s.id,s.draft.version,s.draft]);}
-      await db.query('UPDATE skill_versions SET publication=$1 WHERE id=$2',[pub,v.id]);
-      for(const ref of Object.values(s.draft.assets)as string[])await db.query('INSERT INTO version_assets VALUES($1,$2) ON CONFLICT DO NOTHING',[v.id,assetId(ref)]);
-      await db.query("UPDATE skills SET published_version_id=$1,publication=$2,status='published',updated_at=now() WHERE id=$3",[v.id,pub,s.id]);
-      const target=(await db.query('SELECT * FROM github_targets WHERE skill_id=$1',[s.id])).rows[0];let jobId=null;
-      if(pub.github)check(target,422,'GITHUB_TARGET_REQUIRED','请先在 GitHub 同步页面配置此 Skill 的目标仓库');
-      if(pub.github&&target){check(config.githubEnabled,422,'GITHUB_DISABLED','GitHub App 尚未配置');jobId=randomUUID();await db.query("INSERT INTO jobs(id,user_id,type,payload,unique_key) VALUES($1,$2,'github',$3,$4)",[jobId,uid(r),{skill_id:s.id,version_id:v.id,target,content:publicMind(s.draft,pub)},`${v.id}:${target.repo_id}:${target.branch}`]);}
-      return {version_id:v.id,sync_job_id:jobId};
-    });
-  });
-  app.post('/skills/:id/unpublish',async r=>{const s=await ownedSkill(params(r).id,uid(r));check(s.status!=='blocked',403,'BLOCKED','已被管理下架');await pool.query("UPDATE skills SET status='draft' WHERE id=$1",[s.id]);return {unpublished:true};});
+  app.post('/skills/:id/publish',async r=>writeSkill(uid(r),id(params(r).id),body(r),true,false));
+  app.post('/skills/:id/unpublish',async r=>{const s=await ownedSkill(params(r).id,uid(r));check(s.status!=='blocked',403,'BLOCKED','已被管理下架');await pool.query("UPDATE skills SET status='draft',revision=revision+1 WHERE id=$1 AND status<>'blocked'",[s.id]);return {unpublished:true};});
   app.get('/skills/:id/export',async(r,p)=>{
     const version=id(query(r).version);const v=await accessibleVersion(version,uid(r),'download');check(v.skill_id===id(params(r).id),404,'NOT_FOUND','版本不属于此 Skill');
     const files=await exportFiles(v.content);const archive=await zipFiles(new Map([...files].map(([k,vv])=>[`${v.content.slug}/${k}`,vv])));

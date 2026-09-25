@@ -1,8 +1,8 @@
 # DreamFly · 公共 Mind Skill 平台
 
-基于 Vue / UniApp 的 H5 前端、Fastify / TypeScript 后端和 PostgreSQL，支持邮箱验证码注册、服务端会话、意识 Skill 上传与发布、用户模型配置、MindCopy 流式交互和 GitHub 后台同步。
+基于 Vue / UniApp 的 H5 前端、Fastify / TypeScript 后端和 PostgreSQL，支持邮箱验证码注册、服务端会话、意识 Skill 上传与发布、用户模型配置、MindCopy 流式交互和 GitHub 每周后台同步。
 
-当前为本地可运行版本，服务器 Docker 部署暂缓。真实 SMTP、模型 API 和 GitHub App 需要配置后联调；完整验证范围见 [实施记录](docs/IMPLEMENTATION_STATUS.md)。
+当前为本地可运行版本，服务器 Docker 部署暂缓。真实 SMTP、模型 API 和 GitHub Owner PAT 需要配置后联调；完整验证范围见 [实施记录](docs/IMPLEMENTATION_STATUS.md)。
 
 ## 开始使用
 

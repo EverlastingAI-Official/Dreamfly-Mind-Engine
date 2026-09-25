@@ -4,10 +4,16 @@ import yauzl from 'yauzl';
 import yazl from 'yazl';
 // Shared portable schema and migration functions are also consumed by the H5 editor.
 // @ts-ignore JavaScript package has no build step.
-import { mindSchema, parseMind, emptyMind, skillMarkdown } from '../../packages/mind-format/index.js';
+import { mindSchema, parseMind, emptyMind, skillMarkdown, skillSlug, publicationSettings, assetMaxBytes, skillSubmissionIssues } from '../../packages/mind-format/index.js';
 import { check, HttpError } from './errors.js';
 import { config } from './config.js';
-export { parseMind, emptyMind, skillMarkdown };
+export { parseMind, emptyMind, skillMarkdown, skillSlug, publicationSettings, assetMaxBytes };
+export function validateSkillSubmission(mind:any){
+  validateMind(mind);
+  const issues=skillSubmissionIssues(mind);
+  check(!issues.length,422,'INCOMPLETE_SKILL',issues.join('；'));
+  return mind;
+}
 const validate=new Ajv({allErrors:true}).compile(mindSchema);
 export function validateMind(mind:any) {
   if(!validate(mind)) throw new HttpError(422,'INVALID_SKILL','Skill 格式不正确',validate.errors);

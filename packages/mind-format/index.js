@@ -16,6 +16,25 @@ export const mindSchema = {
 export function emptyMind(slug='my-mind') {
   return {schema_version:'1.0',slug,version:'1.0.0',name:'我的 MindCopy',description:'我的人格与记忆',language:'zh-CN',persona:{instructions:'请以我的表达方式交流，记忆中没有的经历不要编造。',self_description:'',values:[]},memory:{fragments:[]},assets:{},capabilities:['text-chat']};
 }
+export const skillSlug = id => `mind-${id.toLowerCase()}`;
+export const assetMaxBytes = 10 * 1024 * 1024;
+export function skillSubmissionIssues(mind) {
+  const issues=[];
+  if(!mind?.persona?.instructions?.trim())issues.push('请填写人格与表达方式');
+  if(!mind?.persona?.self_description?.trim())issues.push('请填写自我认知');
+  if(!mind?.memory?.fragments?.length)issues.push('请至少填写一条记忆片段');
+  else if(mind.memory.fragments.some(m=>!m.content?.trim()))issues.push('请填写每条记忆片段的内容，或移除空白片段');
+  return issues;
+}
+export function defaultPublication(mind) {
+  return {listed:true,chat:true,download:true,memory_ids:mind.memory.fragments.map(m=>m.id)};
+}
+export function publicationSettings(mind, choices) {
+  const listed=choices.listed===true,download=listed&&choices.download===true;
+  return {listed,chat:listed&&choices.chat===true,download,github:download,
+    memory_ids:Array.isArray(choices.memory_ids)?choices.memory_ids:[],
+    asset_keys:download?Object.keys(mind.assets):[]};
+}
 export function parseMind(source, slug='imported-mind') {
   let value= typeof source==='string' ? JSON.parse(source.replace(/^\s*export\s+default\s+/,'').replace(/;\s*$/,'').trim()) : structuredClone(source);
   if(value?.schema_version) return {mind:value,warnings:[]};

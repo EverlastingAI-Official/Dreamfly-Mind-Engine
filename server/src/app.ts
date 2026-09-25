@@ -4,14 +4,14 @@ import multipart from '@fastify/multipart';
 import swagger from '@fastify/swagger';
 import { randomUUID } from 'node:crypto';
 import { auth } from './auth.js';
-import { providerRoutes } from './providers.js';
+import { providerRoutes, type ModelListTransport } from './providers.js';
 import { skillRoutes } from './skills.js';
 import { conversationRoutes, type ChatTransport } from './conversations.js';
-import { githubRoutes, githubWebhook } from './github.js';
+import { githubRoutes } from './github.js';
 import { HttpError } from './errors.js';
 import { config } from './config.js';
 import { describeRoute } from './openapi.js';
-export async function buildApp(options:{transport?:ChatTransport;logger?:boolean}={}){
+export async function buildApp(options:{transport?:ChatTransport;modelListTransport?:ModelListTransport;logger?:boolean}={}){
   const app=Fastify({logger:options.logger??{level:process.env.LOG_LEVEL||'info',redact:['req.headers.cookie','req.headers.authorization','res.headers["set-cookie"]'],serializers:{req:(r:any)=>({method:r.method,url:r.url?.split('?')[0]})}},bodyLimit:config.uploadJSON+1024*1024,genReqId:()=>randomUUID()});
   await app.register(cookie);await app.register(multipart,{limits:{fileSize:config.uploadZIP,files:1,fields:5}});
   app.addHook('onRoute',describeRoute);
@@ -28,11 +28,7 @@ export async function buildApp(options:{transport?:ChatTransport;logger?:boolean
     await auth(api);
     api.get('/health',{config:{public:true}},async()=>({status:'ok'}));
     api.get('/openapi.json',{config:{public:true}},async()=>app.swagger());
-    await providerRoutes(api);await skillRoutes(api);await conversationRoutes(api,options.transport);await githubRoutes(api);
-    await api.register(async hooks=>{
-      hooks.removeContentTypeParser('application/json');hooks.addContentTypeParser('application/json',{parseAs:'buffer'},(_r,b,done)=>done(null,b));
-      hooks.post('/github/webhook',{config:{webhook:true},bodyLimit:1024*1024},async r=>githubWebhook(r.body as Buffer,String(r.headers['x-hub-signature-256']||'')));
-    });
+    await providerRoutes(api,options.modelListTransport);await skillRoutes(api);await conversationRoutes(api,options.transport);await githubRoutes(api);
   },{prefix:'/api/v1'});
   return app;
 }
