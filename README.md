@@ -27,7 +27,9 @@ npm.cmd run dev
 | 路径 | 用途 |
 | --- | --- |
 | `src/` | 前端源码；实际页面路由为 `src/pages.json` |
-| `server/` | 后端 API、后台任务、数据库迁移和测试 |
+| `server/` | `src/routes/` 为 HTTP 入口，`src/services/` 为共享业务；另含后台任务、迁移和测试 |
+| `archive/uniapp-prototype/` | 不参与构建的旧页面和素材 |
+| `tests/frontend/` | 页面账号隔离与 HTTP/SSE 回归测试 |
 | `packages/mind-format/` | 共享 Skill 格式规范、迁移与导出代码 |
 | `docs/` | 当前使用说明、实现计划、实施记录与参考论文，采用单层结构 |
 | `.github/` | GitHub 自动构建与检查 |
@@ -43,6 +45,7 @@ npm.cmd run dev
 
 - [本地运行与配置](docs/LOCAL_DEVELOPMENT.md)
 - [统一 API](docs/API.md)
+- [代码结构与职责](docs/CODE_STRUCTURE.md)
 - [实施状态与验证记录](docs/IMPLEMENTATION_STATUS.md)
 - [公共平台实现计划](docs/PUBLIC_PLATFORM_IMPLEMENTATION_PLAN.md)
 - [意识上传：理论、技术与个体同一性探讨](docs/意识上传：理论、技术与个体同一性探讨.pdf)

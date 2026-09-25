@@ -4,13 +4,13 @@
 
 ## 1. 当前实现
 
-- H5：注册/登录/密码重置、公开目录、个人 Skills、编辑/上传/发布、模型连接、独立对话、GitHub 目标与同步状态、账号与管理入口。
+- H5：注册/登录/密码重置、公开目录、个人 Skills、编辑/上传/发布、模型连接、独立对话、Skill 详情的 GitHub 链接、账号与管理入口。
 - 后端：Fastify + TypeScript；PostgreSQL 会话与业务数据；数据库迁移；邮件与 GitHub worker。
 - 格式：`packages/mind-format` 共享 Schema/迁移/导出；JSON、旧 `.mind/.mind.js`、SKILL.md、ZIP；素材保持私有直至明确发布。
 - 模型：OpenAI 兼容、Anthropic Messages、Gemini generateContent 三协议；用户自己的加密连接档案；流式文本和用量。
 - GitHub：统一 Owner PAT、自动版本提交、独立后台队列、去重恢复、失败重试。
 
-当前 Web 入口为 `src/pages/platform/index.vue`。旧页面源码保留作参考，但从路由表移除；新平台替代原有缺页路由和模拟控制台，不再运行浏览器直连模型代码。新页面优先 H5，使用原生浏览器表单控件；本次没有验证小程序或 App 编译。
+Web 使用 uni-app 原生 History 路由，入口 `/explore`；详情、编辑、会话和设置各有独立地址。`src/pages.json` 注册薄页面，`PlatformLayout.vue` 负责共用布局，`components/platform/` 负责业务面板，`composables/` 管理业务状态。所有导航和分享 URL 集中在 `src/services/navigation.mjs`。旧原型页面未注册；本次仅验证 H5，使用原生浏览器表单控件，未验证小程序或 App 编译。
 
 ## 2. 环境与安装
 
@@ -92,7 +92,24 @@ npm.cmd run worker --prefix server
 npm.cmd run dev:h5
 ```
 
-打开 [本地平台](http://127.0.0.1:5173)。验证码通过配置的真实 SMTP 发送，请在实际邮箱查看；本地模拟邮箱及 Mailpit 服务已移除。
+打开 [本地平台](http://127.0.0.1:5173/explore)。验证码通过配置的真实 SMTP 发送，请在实际邮箱查看；本地模拟邮箱及 Mailpit 服务已移除。
+
+从单页工程切换为多页或修改 manifest 路由模式后，需要重启 `dev:h5`，否则 uni-app 可能沿用启动时的单页编译配置。普通页面编辑仍支持热更新。
+
+### 构建产物与 History 托管
+
+```powershell
+npm.cmd run test:frontend
+npm.cmd run test:routing
+npm.cmd run build:h5
+npm.cmd run preview:h5
+```
+
+预览默认在 `http://127.0.0.1:4173/explore` 提供 `dist/build/h5`，后端需另行启动。可通过 `H5_HOST`、`H5_PORT`、`H5_ROOT` 和 `API_PROXY_TARGET` 配置监听地址、端口、构建目录和 API 上游（默认 `http://127.0.0.1:3001`）。在 4173 测试登录等写请求时，后端 `APP_ORIGIN` 也须与该访问地址一致；勿关闭来源校验。
+
+`scripts/serve-h5.mjs` 将 `/api/v1` 请求代理至 API；已注册页面返回 `index.html`，未知页面返回带页面内容的 404，缺失静态文件保持 404。代理保留 API 状态码和流式响应。生产环境可在该进程前配置 HTTPS 反向代理，或使用同样的路径匹配顺序部署静态站点；不能把 API 错误或缺失 JS 一律回退到首页。本轮没有执行远程部署。
+
+执行 `npm.cmd run test:routing` 可定向验证旧链接迁移、参数归一化、登录回跳限制和服务器页面回退。
 
 开发环境的 `APP_ORIGIN` 配置为本机地址时，来源校验允许同协议、同端口的 `localhost`、`127.0.0.1` 和 `[::1]`，因此访问 `http://localhost:5173` 或 `http://127.0.0.1:5173` 都可以申请验证码。生产环境仍只允许配置的精确来源，其他域名、端口及缺失 Origin 的写请求会被拒绝。Cookie 按主机保存，切换 localhost 和 127.0.0.1 后需要重新登录。前端自动通过 Vite `/api/v1` 代理调用后端。后端及 worker 源码变化后运行 `npm.cmd run dev` 自动重启，前端支持热更新。
 
@@ -162,6 +179,7 @@ npm.cmd run dev
 - 开始会话后固定厂商/模型配置；默认连接变化不影响旧会话。旧会话可显式切换后续模型。
 - 自定义连接仅接受公开 HTTPS/443，实际连接地址经过 DNS 校验和绑定，拒绝内网、回环和元数据地址。
 - 固定厂商 HTTPS 地址兼容代理的 `198.18.0.0/15` Fake-IP 解析，仍保持 TLS 主机名验证、不跟随重定向；其他目标不适用此例外，内网、回环和元数据地址仍被拒绝。自定义地址保存时仍要求真实公网解析。
+- 如果测试提示“后端运行环境禁止连接模型服务”（`MODEL_NETWORK_BLOCKED`），表示后端进程受到联网权限限制。2026-09-25 曾复现受限进程连接厂商代理地址时报 `EACCES`，同一配置在允许联网的进程中立即通过。停止旧后端后，从允许联网的终端重新启动；通过代理运行开发服务时也必须给后端进程相应联网权限。无需因此修改 API Key、关闭 TLS 验证或放宽地址校验。
 
 ## 7. 统一仓库 GitHub 同步
 
@@ -181,7 +199,9 @@ WORKER_QUEUE=all
 
 目标分支须允许此账号直接提交；建议准备独立的内容仓库。空仓库首次同步会创建 README 初始化，已有仓库需配置存在的分支。目录是 `skills/<用户ID>/<Skill ID>/<版本>/<包名>/`；公开仓库的所有文件都可访问，目录不是访问权限边界。平台下架不会删除仓库历史。
 
-修改配置后重启 API 和 worker。管理员可在 GitHub 同步页检查连接；检查只读取仓库、分支，不验证实际写入，Contents 权限、保护规则和令牌有效期仍需配置正确。任务已入队后不自动改变目标，目标变更会停止旧任务。
+修改配置后重启 API 和 worker。独立 GitHub 同步页面已移除；当前版本成功同步后，在 Skill 详情和编辑页提供“在 GitHub 查看”。新任务直达该版本的目录，已有成功记录保留原提交链接。编辑页继续显示定时同步状态。
+
+管理员仍可使用 `POST /api/v1/admin/github/check` 检查连接；检查只读取仓库、分支，不验证实际写入，Contents 权限、保护规则和令牌有效期仍需配置正确。任务已入队后不自动改变目标，目标变更会停止旧任务。
 
 上传只创建平台版本。GitHub worker 每分钟检查持久化计划，默认每周一 03:00（Asia/Shanghai）生成批次；星期使用 1–7，时间使用 HH:mm。每个 Skill 选择该次扫描时最新已发布、已授权版本，未选记忆不导出。每项一个任务和提交，保留版本目录。无变化时只记录空批次，不创建远端提交。
 
@@ -209,6 +229,8 @@ WORKER_QUEUE=all
 ## 8. 校验与维护
 
 ```powershell
+npm.cmd run test:frontend
+npm.cmd run test:routing
 npm.cmd run build:h5
 npm.cmd run build --prefix server
 npm.cmd test --prefix server
@@ -231,6 +253,6 @@ npm.cmd run admin --prefix server -- registered-email@example.com
 
 ## 9. 当前验证与边界
 
-已通过：H5 构建、TypeScript 编译、18 项测试（包含嵌套集成检查），以及浏览器登录/草稿保存/版本发布/重启会话恢复。
+本次结构重写通过 H5 构建、TypeScript 编译及针对性前后端回归测试，范围见 `IMPLEMENTATION_STATUS.md`。此前的浏览器登录/发布验证不等同于本次重新完成真实外部联调。
 
 真实外部联调仍需你的 SMTP、模型和 GitHub Owner PAT 与仓库配置：未验证真实邮件投递、收费模型响应、真实仓库提交。服务器 Docker 部署按要求暂缓。语音素材上传不等于语音克隆，MCP/A2A、群聊、微调等仍按计划后续路线处理。

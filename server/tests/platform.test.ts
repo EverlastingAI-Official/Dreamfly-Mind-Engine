@@ -20,7 +20,7 @@ test('PostgreSQL account, skill, model ownership and conversation integration',a
   const {decrypt,codeDigest}=await import('../src/crypto.js');
   const {emptyMind}=await import('../src/format.js');
   let lastContext:any[]=[];
-  async function* fakeModel(_p:any,messages:any[]){lastContext=messages;yield {delta:'你好，保持原文。'};yield {usage:{input_tokens:12,output_tokens:8}};}
+  async function* fakeModel(_p:any,messages:any[]){lastContext=messages;if(messages.at(-1)?.content==='fixture:fail'){yield {delta:'partial'};const {HttpError}=await import('../src/errors.js');throw new HttpError(502,'UPSTREAM_429','fixture rate limit');}yield {delta:'你好，保持原文。'};yield {usage:{input_tokens:12,output_tokens:8}};}
   await pool.query(await readFile('migrations/001_platform.sql','utf8'));
   await pool.query(await readFile('migrations/002_owner_github.sql','utf8'));
   await t.test('weekly migration stops immediate jobs while retaining successful records and remote markers',async()=>{
@@ -33,7 +33,7 @@ test('PostgreSQL account, skill, model ownership and conversation integration',a
     assert.deepEqual(rows.find(x=>x.id===pending).payload,payload);
     await pool.query('DELETE FROM jobs WHERE id=ANY($1::uuid[])',[[pending,success]]);
   });
-  const {scheduleWeeklyGithub,weeklyWindow}=await import('../src/github-schedule.js');
+  const {scheduleWeeklyGithub,weeklyWindow}=await import('../src/services/github-schedule.js');
   await pool.query(await readFile('migrations/004_skill_reactions.sql','utf8'));
   const discoveryCalls:{endpoint:any;key:string}[]=[];
   const app=await buildApp({logger:false,transport:fakeModel,modelListTransport:async(endpoint,key)=>{discoveryCalls.push({endpoint,key});return [{id:'test-model',name:'Test model'}];}});await app.ready();
@@ -110,7 +110,7 @@ test('PostgreSQL account, skill, model ownership and conversation integration',a
     });
     await t.test('private draft ownership and explicit publication projection',async t=>{
       const mind=emptyMind('alice-mind');mind.persona.self_description='我重视真实的个人经历。';mind.memory.fragments=[{id:'public',content:'PUBLIC MEMORY'},{id:'private',content:'PRIVATE SECRET'}];
-      const {storeAsset}=await import('../src/skills.js');
+      const {storeAsset}=await import('../src/services/assets.js');
       const image=await storeAsset(a.user.id,'fixture.png',Buffer.from([137,80,78,71,13,10,26,10]));
       const audio=await storeAsset(a.user.id,'fixture.wav',Buffer.from('RIFF0000WAVE'));
       t.after(async()=>{await unlink(path.join(config.assets,image.id));await unlink(path.join(config.assets,audio.id));});
@@ -202,7 +202,7 @@ test('PostgreSQL account, skill, model ownership and conversation integration',a
       assert.equal((await pool.query('SELECT publication FROM skill_versions WHERE id=$1',[accepted.json().data.version_id])).rows[0].publication.compliance_confirmed,true);
     });
     await t.test('asset size limit accepts 10 MB and rejects larger uploads and legacy assets on publication',async t=>{
-      const {assetMaxBytes}=await import('../src/format.js');const {storeAsset}=await import('../src/skills.js');
+      const {assetMaxBytes}=await import('../src/format.js');const {storeAsset}=await import('../src/services/assets.js');
       const bytes=Buffer.alloc(assetMaxBytes+1);Buffer.from([137,80,78,71,13,10,26,10]).copy(bytes);
       await assert.rejects(()=>storeAsset(a.user.id,'too-large.png',bytes),(e:any)=>e.code==='ASSET_TOO_LARGE');
       const asset=await storeAsset(a.user.id,'limit.png',bytes.subarray(0,assetMaxBytes));t.after(()=>unlink(path.join(config.assets,asset.id)));
@@ -241,6 +241,39 @@ test('PostgreSQL account, skill, model ownership and conversation integration',a
       assert.equal(lastContext.at(-1).content,'Keep MY Case!');assert.ok(lastContext[0].content.includes('PUBLIC MEMORY'));assert.ok(!lastContext[0].content.includes('PRIVATE SECRET'));
       assert.equal((await request('GET',`/conversations/${conversationId}/messages`,undefined,a)).statusCode,404);
       const repeated=await request('POST',`/conversations/${conversationId}/messages`,payload,b);assert.equal(repeated.json().data.existing.status,'completed');assert.equal((await pool.query('SELECT count(*)::int n FROM messages WHERE conversation_id=$1',[conversationId])).rows[0].n,2);
+    });
+    await t.test('old conversation links remain accessible beyond the first 200 rows and enforce ownership', async () => {
+      const ids = Array.from({length: 201}, () => randomUUID());
+      await pool.query("INSERT INTO conversations(id,user_id,skill_version_id,title,profile_id,model_config) SELECT value,$2,$3,'newer fixture',$4,'{}'::jsonb FROM unnest($1::uuid[]) value", [ids,b.user.id,versionId,profileId]);
+      const list=await request('GET','/conversations?page=1&page_size=200',undefined,b);
+      assert.equal(list.json().data.length,200);
+      assert.ok(!list.json().data.some((item:{id:string})=>item.id===conversationId));
+      const detail=await request('GET','/conversations/'+conversationId,undefined,b);
+      assert.equal(detail.statusCode,200,detail.body);
+      assert.equal(detail.json().data.id,conversationId);
+      assert.equal((await request('GET','/conversations/'+conversationId,undefined,a)).statusCode,404);
+      const later=await request('GET','/conversations?page=2&page_size=200',undefined,b);
+      assert.ok(later.json().data.some((item:{id:string})=>item.id===conversationId));
+      await pool.query('DELETE FROM conversations WHERE id=ANY($1::uuid[])',[ids]);
+    });
+    await t.test('invalid image bytes return a useful client error instead of a server failure', async () => {
+      const boundary='invalid-media-test';
+      const payload='--'+boundary+'\r\nContent-Disposition: form-data; name="file"; filename="bad.png"\r\nContent-Type: image/png\r\n\r\nnot an image\r\n--'+boundary+'--\r\n';
+      const response=await app.inject({method:'POST',url:'/api/v1/assets',headers:{origin,cookie:a.cookie,'x-csrf-token':a.csrf,'content-type':'multipart/form-data; boundary='+boundary},payload});
+      assert.equal(response.statusCode,422,response.body);
+      assert.equal(response.json().error.code,'INVALID_MEDIA');
+    });
+    await t.test('SSE failure is emitted once with its explanation and invalid JSON is a client error', async () => {
+      const response=await request('POST','/conversations/'+conversationId+'/messages',{content:'fixture:fail',client_request_id:randomUUID()},b);
+      assert.equal(response.statusCode,200,response.body);
+      assert.equal((response.body.match(/event: message.failed/g)||[]).length,1);
+      assert.match(response.body,/fixture rate limit/);
+      const history=await request('GET','/conversations/'+conversationId+'/messages',undefined,b);
+      assert.equal(history.json().data.at(-1).status,'failed');
+      assert.equal(history.json().data.at(-1).content,'partial');
+      const invalid=await request('POST','/skills/validate',{content:'not JSON'},a);
+      assert.equal(invalid.statusCode,422,invalid.body);
+      assert.equal(invalid.json().error.code,'INVALID_SKILL');
     });
     await t.test('weekly scheduling selects latest versions once, catches up and retains failed task identity',async()=>{
       const sid=randomUUID(),content=emptyMind('mind-'+sid);
@@ -302,7 +335,7 @@ test('PostgreSQL account, skill, model ownership and conversation integration',a
       assert.equal((await pool.query('SELECT count(*)::int n FROM github_batch_jobs WHERE batch_id=$1',[excluded])).rows[0].n,0);
     });
     await t.test('concurrent uploads with assets reuse transaction connections beyond pool capacity',async t=>{
-      const {storeAsset}=await import('../src/skills.js');
+      const {storeAsset}=await import('../src/services/assets.js');
       const asset=await storeAsset(a.user.id,'parallel.png',Buffer.from([137,80,78,71,13,10,26,10]));
       t.after(()=>unlink(path.join(config.assets,asset.id)));
       const responses=await Promise.all(Array.from({length:12},async()=>{
@@ -363,7 +396,7 @@ test('PostgreSQL account, skill, model ownership and conversation integration',a
       assert.equal((await request('POST','/sync-jobs/'+legacy+'/retry',undefined,a)).json().error.code,'GITHUB_LEGACY_JOB');
     });
     await t.test('GitHub retries branch races without force and recognizes a successful remote commit',async()=>{
-      const {syncGithub}=await import('../src/github.js');const content=emptyMind('alice-mind');
+      const {syncGithub}=await import('../src/services/github-sync.js');const content=emptyMind('alice-mind');
       await pool.query("UPDATE skills SET publication=publication||'{\"github\":true}'::jsonb WHERE id=$1",[skillId]);
       const job={id:randomUUID(),user_id:a.user.id,payload:{skill_id:skillId,version_id:versionId,content,target:{auth_mode:'owner',owner:'example',repo:'repo',branch:'main',mode:'commit'}}};
       let commits:any[]=[],updates=0,created=0;const mock:any={

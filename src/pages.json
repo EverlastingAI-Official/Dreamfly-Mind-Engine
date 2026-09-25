@@ -1,9 +1,97 @@
 {
   "pages": [
     {
-      "path": "pages/platform/index",
+      "path": "index",
+      "style": { "navigationStyle": "custom" }
+    },
+    {
+      "path": "explore",
       "style": {
-        "navigationBarTitleText": "云己 · Mind Skill 平台",
+        "navigationBarTitleText": "云己 · DreamFly",
+        "navigationStyle": "custom"
+      }
+    },
+    {
+      "path": "skills/detail",
+      "style": {
+        "navigationBarTitleText": "云己 · DreamFly",
+        "navigationStyle": "custom"
+      }
+    },
+    {
+      "path": "skills/mine",
+      "style": {
+        "navigationBarTitleText": "云己 · DreamFly",
+        "navigationStyle": "custom"
+      }
+    },
+    {
+      "path": "skills/new",
+      "style": {
+        "navigationBarTitleText": "云己 · DreamFly",
+        "navigationStyle": "custom"
+      }
+    },
+    {
+      "path": "skills/edit",
+      "style": {
+        "navigationBarTitleText": "云己 · DreamFly",
+        "navigationStyle": "custom"
+      }
+    },
+    {
+      "path": "chat",
+      "style": {
+        "navigationBarTitleText": "云己 · DreamFly",
+        "navigationStyle": "custom"
+      }
+    },
+    {
+      "path": "settings/models",
+      "style": {
+        "navigationBarTitleText": "云己 · DreamFly",
+        "navigationStyle": "custom"
+      }
+    },
+    {
+      "path": "settings/account",
+      "style": {
+        "navigationBarTitleText": "云己 · DreamFly",
+        "navigationStyle": "custom"
+      }
+    },
+    {
+      "path": "admin",
+      "style": {
+        "navigationBarTitleText": "云己 · DreamFly",
+        "navigationStyle": "custom"
+      }
+    },
+    {
+      "path": "login",
+      "style": {
+        "navigationBarTitleText": "云己 · DreamFly",
+        "navigationStyle": "custom"
+      }
+    },
+    {
+      "path": "register",
+      "style": {
+        "navigationBarTitleText": "云己 · DreamFly",
+        "navigationStyle": "custom"
+      }
+    },
+    {
+      "path": "reset-password",
+      "style": {
+        "navigationBarTitleText": "云己 · DreamFly",
+        "navigationStyle": "custom"
+      }
+    },
+    {
+      "path": "not-found",
+      "style": {
+        "navigationBarTitleText": "云己 · DreamFly",
         "navigationStyle": "custom"
       }
     }

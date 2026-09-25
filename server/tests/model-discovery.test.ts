@@ -1,6 +1,31 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { listModels, providerProxyAddress, publicAddress } from '../src/providers.js';
+import https from 'node:https';
+import dns from 'node:dns/promises';
+import { EventEmitter } from 'node:events';
+import { listModels, providerProxyAddress, publicAddress, upstream } from '../src/services/model-provider.js';
+
+test('blocked model connections report network permissions instead of a generic server failure',async t=>{
+  t.mock.method(dns,'lookup',async()=>[{address:'93.184.216.34',family:4}]);
+  for(const code of ['EACCES','EPERM']){
+    await t.test(code,async t=>{
+      t.mock.method(https,'request',()=>{
+        const req=Object.assign(new EventEmitter(),{
+          write(){},
+          end(){queueMicrotask(()=>{req.emit('error',Object.assign(new Error('sensitive transport details'),{code}));req.emit('close');});}
+        });
+        return req;
+      });
+      await assert.rejects(()=>upstream('https://api.deepseek.com/v1/chat/completions','POST',{},{}),error=>{
+        assert.equal((error as any).statusCode,503);
+        assert.equal((error as any).code,'MODEL_NETWORK_BLOCKED');
+        assert.match((error as Error).message,/允许联网/);
+        assert.doesNotMatch((error as Error).message,/sensitive/);
+        return true;
+      });
+    });
+  }
+});
 
 test('unsaved model discovery authenticates without a model ID and requests chat models',async()=>{
   const models=await listModels({provider:'siliconflow',protocol:'openai-chat',base_url:'https://api.siliconflow.cn/v1'},'fixture-key',async(url,headers)=>{

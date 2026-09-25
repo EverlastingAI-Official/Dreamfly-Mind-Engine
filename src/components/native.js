@@ -1,5 +1,5 @@
 // Native H5 form controls preserve browser form/checkbox semantics inside UniApp.
-import { defineComponent, h } from 'vue'
+import { defineComponent, h } from 'vue';
 function control(tag) {
   return defineComponent({
     inheritAttrs: false,
@@ -7,31 +7,62 @@ function control(tag) {
     emits: ['update:modelValue'],
     setup(props, { attrs, emit }) {
       return () => {
-        const checkbox = attrs.type === 'checkbox'
-        const checked = checkbox && (Array.isArray(props.modelValue) ? props.modelValue.includes(attrs.value) : !!props.modelValue)
+        const checkbox = attrs.type === 'checkbox';
+        const checked =
+          checkbox &&
+          (Array.isArray(props.modelValue)
+            ? props.modelValue.includes(attrs.value)
+            : !!props.modelValue);
         return h(tag, {
-          ...attrs, class: [`native-${tag}`, attrs.class], ...(checkbox ? { checked } : { value: props.modelValue }),
+          ...attrs,
+          class: [`native-${tag}`, attrs.class],
+          ...(checkbox ? { checked } : { value: props.modelValue }),
           onInput(event) {
-            if (!checkbox) emit('update:modelValue', props.modelModifiers.number ? Number(event.target.value) : event.target.value)
-            attrs.onInput?.(event)
+            if (!checkbox)
+              emit(
+                'update:modelValue',
+                props.modelModifiers.number ? Number(event.target.value) : event.target.value,
+              );
+            attrs.onInput?.(event);
           },
           onChange(event) {
             if (checkbox) {
-              const current = props.modelValue
-              emit('update:modelValue', Array.isArray(current) ? (event.target.checked ? [...current, attrs.value] : current.filter(x => x !== attrs.value)) : event.target.checked)
+              const current = props.modelValue;
+              emit(
+                'update:modelValue',
+                Array.isArray(current)
+                  ? event.target.checked
+                    ? [...current, attrs.value]
+                    : current.filter((x) => x !== attrs.value)
+                  : event.target.checked,
+              );
             }
-            attrs.onChange?.(event)
-          }
-        })
-      }
-    }
-  })
+            attrs.onChange?.(event);
+          },
+        });
+      };
+    },
+  });
 }
-export const NInput = control('input')
-export const NTextarea = control('textarea')
+export const NInput = control('input');
+export const NTextarea = control('textarea');
 function container(tag) {
-  return defineComponent({ inheritAttrs: false, setup: (_props, { attrs, slots }) => () => h(tag, { ...(tag === 'button' ? { type: 'button' } : {}), ...attrs, class: [`native-${tag}`, attrs.class] }, slots.default?.()) })
+  return defineComponent({
+    inheritAttrs: false,
+    setup:
+      (_props, { attrs, slots }) =>
+      () =>
+        h(
+          tag,
+          {
+            ...(tag === 'button' ? { type: 'button' } : {}),
+            ...attrs,
+            class: [`native-${tag}`, attrs.class],
+          },
+          slots.default?.(),
+        ),
+  });
 }
-export const NButton = container('button')
-export const NForm = container('form')
-export const NLabel = container('label')
+export const NButton = container('button');
+export const NForm = container('form');
+export const NLabel = container('label');

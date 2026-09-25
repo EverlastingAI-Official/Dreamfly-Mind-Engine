@@ -2,8 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
 import { parseMind,validateMind,emptyMind,skillMarkdown,importPackage,zipFiles } from '../src/format.js';
-import { sseEvents,publicAddress,requestConfig } from '../src/providers.js';
-import { publicMind } from '../src/skills.js';
+import { sseEvents,publicAddress,requestConfig } from '../src/services/model-provider.js';
+import { publicMind } from '../src/public-mind.js';
 import { encrypt,decrypt } from '../src/crypto.js';
 // @ts-ignore Shared browser/server publication rules.
 import { defaultPublication, publicationSettings, skillSubmissionIssues } from '../../packages/mind-format/index.js';
@@ -24,7 +24,7 @@ test('new skills select all permissions and memories, with download including ev
 });
 
 test('existing mind samples migrate with valid personas and memory',()=>{
-  const folders=['../src/pages/consciousness/interaction','../src/static/consciousness','../src/static/minds'];let count=0;
+  const folders=['tests/fixtures/legacy-minds/pages/consciousness/interaction','tests/fixtures/legacy-minds/static/consciousness','tests/fixtures/legacy-minds/static/minds'];let count=0;
   for(const folder of folders)for(const name of readdirSync(folder).filter(x=>x.endsWith('.mind'))){validateMind(parseMind(readFileSync(`${folder}/${name}`,'utf8')).mind);count++;}
   assert.equal(count,11);
 });
@@ -65,4 +65,16 @@ test('provider adapters separate system messages and use correct authentication 
   const a=requestConfig({...p,protocol:'anthropic-messages'},messages);assert.equal(a.url,'https://example.com/v1/messages');assert.equal(a.data.system,'persona');assert.equal(a.data.messages.length,2);assert.equal(a.headers['x-api-key'],'fixture-key');
   const g=requestConfig({...p,protocol:'gemini-generate-content'},messages);assert.equal(g.data.contents[1].role,'model');assert.equal(g.data.systemInstruction.parts[0].text,'persona');assert.ok(!g.headers.Authorization);
   const o=requestConfig({...p,protocol:'openai-chat'},messages);assert.equal(o.data.messages.length,3);assert.equal(o.headers.Authorization,'Bearer fixture-key');
+});
+
+test('standalone supported files are parsed regardless of basename while ZIP keeps package conventions', async()=>{
+  const mind=emptyMind();
+  for(const name of ['mind.json','backup.json','backup.JSON','export.js','export.mind.js']) {
+    const content=name.endsWith('.js') ? 'export default '+JSON.stringify(mind)+';' : JSON.stringify(mind);
+    assert.deepEqual((await importPackage(name,Buffer.from(content))).mind,mind,name);
+  }
+  assert.equal((await importPackage('notes.md',Buffer.from(skillMarkdown(mind)))).mind.persona.instructions,mind.persona.instructions);
+  await assert.rejects(()=>importPackage('backup.json',Buffer.from('bad JSON')), {code:'INVALID_SKILL',statusCode:422});
+  const zip=await zipFiles(new Map([['unrelated.json',Buffer.from(JSON.stringify(mind))]]));
+  await assert.rejects(()=>importPackage('backup.zip',zip),{code:'NO_SKILL'});
 });

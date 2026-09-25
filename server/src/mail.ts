@@ -12,9 +12,11 @@ export function createMailTransport() {
     connectionTimeout: 15000,
     greetingTimeout: 15000,
     socketTimeout: 30000,
-    ...(process.env.SMTP_USER ? {
-      auth: { user: process.env.SMTP_USER, pass: secret('SMTP_PASSWORD', true) },
-    } : {}),
+    ...(process.env.SMTP_USER
+      ? {
+          auth: { user: process.env.SMTP_USER, pass: secret('SMTP_PASSWORD', true) },
+        }
+      : {}),
   });
 }
 

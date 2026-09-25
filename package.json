@@ -2,6 +2,8 @@
   "name": "uni-preset-vue",
   "version": "0.0.0",
   "scripts": {
+    "preview:h5": "node scripts/serve-h5.mjs",
+    "test:routing": "node --test scripts/navigation.test.mjs",
     "dev": "node scripts/dev.mjs",
     "dev:custom": "uni -p",
     "dev:h5": "uni",
@@ -34,7 +36,9 @@
     "build:quickapp-webview-huawei": "uni build -p quickapp-webview-huawei",
     "build:quickapp-webview-union": "uni build -p quickapp-webview-union",
     "dev:server": "npm --prefix server run dev",
-    "build:server": "npm --prefix server run build"
+    "build:server": "npm --prefix server run build",
+    "format": "prettier --write \"src/**/*.{js,mjs,vue}\" \"server/src/**/*.ts\" \"packages/mind-format/*.{js,ts}\"",
+    "test:frontend": "node --test tests/frontend/*.test.mjs"
   },
   "dependencies": {
     "@dcloudio/uni-app": "3.0.0-4040520250104002",
@@ -62,7 +66,9 @@
     "@dcloudio/uni-cli-shared": "3.0.0-4040520250104002",
     "@dcloudio/uni-stacktracey": "3.0.0-4040520250104002",
     "@dcloudio/vite-plugin-uni": "3.0.0-4040520250104002",
+    "@vue/compiler-sfc": "3.4.21",
     "@vue/runtime-core": "^3.4.21",
+    "prettier": "3.6.2",
     "sass": "^1.86.3",
     "vite": "5.2.8"
   }

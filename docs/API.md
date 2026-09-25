@@ -15,7 +15,7 @@
 ## Skill
 
 - `POST /skills/validate`：JSON `{content: <mind对象或旧格式文本>}`，或 multipart 文件。
-- `POST /skills/import`：multipart `file`，返回规范 mind 与 warnings，同时把包内引用素材私有保存。
+- `POST /skills/import`：multipart `file`，返回规范 mind 与 warnings，同时把包内引用素材私有保存。单文件支持任意文件名的 `.json`、`.mind`、`.js`（JSON 或 `export default` 数据）及 `.md`（YAML frontmatter）；不执行 JavaScript。ZIP 内仍使用 `mind.json`、`.mind` 或 `SKILL.md` 包约定。解析失败返回 422 / INVALID_SKILL。
 - `POST /skills`：`{id?: <UUID>, content: <mind>, publication?: <公开选项>}` 保存新草稿；页面打开创建表单时分配 UUID。服务端使用该 UUID（缺省则生成）分配唯一包名 `mind-<UUID>`，初始版本为 `1.0.0`，返回 id、slug 与 revision。未提供名称时使用“显示名称的mindcopy”。导入创建也分配新包名。
 - `PATCH /skills/{id}`：`{revision, content: <mind>, publication?: <公开选项>}` 保存草稿，已有包名不可修改。revision 来自详情接口，过期返回 DRAFT_CHANGED；草稿公开选项保存在 draft_publication，不影响已发布权限。
 - 保存草稿、创建版本和发布均要求人格指令、自我认知及至少一条记忆内容非空；只有空白字符也不通过。每条记忆都必须有内容。用途说明不再由用户填写，服务端根据名称生成兼容包格式的 description。
@@ -27,11 +27,13 @@
 - 查询参数：`search` 匹配已发布名称、说明、作者、Skill ID 或包名；ID/包名支持前缀匹配，中文和英文关键词均可使用，`%`、`_` 按普通字符处理。`language=zh|en` 筛选内容语言；`download=true|false`、`chat=true|false` 筛选权限；`collection=all|liked|favorites` 筛选全部、本人喜欢或本人收藏（后两项需登录）；`sort=newest|oldest|name|likes` 排序。`page` 从 1 开始，`page_size` 默认 24、最大 100。公开排序时间取当前发布版本时间，私有草稿修改不影响公开排序。
 - 列表返回公开喜欢计数 `like_count`、当前用户状态 `liked` / `favorited`、发布权限、语言及版本。收藏不提供公开计数或收藏者信息，喜欢和收藏也不会让下架或私有 Skill 出现在公开结果中。
 - `GET /skills/{id}/public` 始终返回当前公开版本，包括作者本人访问；返回发布信息、公开记忆/素材数量和反馈状态，不返回草稿或未发布版本列表。登录且作者允许下载时，`preview` 提供人格及按公开范围过滤的记忆；其余情况为 `null`。`GET /skills/{id}` 保留作者管理用途，非作者获得同样的公开投影。
+- 两种详情响应提供 `github_url`：当前发布版本成功同步后返回 GitHub 链接，否则为 `null`。新任务链接指向该提交下的 Skill 目录，历史成功记录兼容原 `commit_url`；新版本尚未同步时不显示旧版本链接。公开详情仍受目录和发布权限限制，不暴露任务 payload 或错误详情。
 - `PUT /skills/{id}/reactions/like` 与 `PUT /skills/{id}/reactions/favorite` 接收 `{active: true|false}`，需要登录、Origin 和 CSRF。设置目标状态可安全重试，重复喜欢不重复计数；取消操作可用于清理已下架条目的本人反馈。
 - `GET /skills/{id}/export?version=<version_id>` 返回 ZIP。参数是平台版本 ID，不是 `1.0.0` 字符串。
 - 探索页下载使用 `GET /skills/{id}/export?scope=public&version=<version_id>`，需登录，且必须为当前仍允许下载的公开版本。作者从探索页下载也按公开范围过滤，旧版本或已撤销权限返回 404。ZIP 文件名包含包名和版本。
-- H5 分享链接为 `/#/pages/platform/index?skill=<Skill ID>`，未登录也能查看公开发布信息。页面支持复制 ID 与链接，登录后恢复原浏览上下文。界面中英切换不会翻译用户内容；编辑器可设置 Skill 内容语言。
+- H5 分享链接为 `/skills/detail?id=<Skill ID>`，未登录也能查看公开发布信息。旧 `/#/pages/platform/index?skill=<Skill ID>` 链接在启动时自动迁移。页面支持复制 ID 与链接，登录后恢复原浏览上下文。界面中英切换不会翻译用户内容；编辑器可设置 Skill 内容语言。
 - `POST /assets` 接收一个 multipart 文件，返回 id 与规范资源 reference，可写入 `mind.assets`。页面分为图片、声音入口，先传 kind=image/audio 再传 file，后端按实际文件类型检查入口是否匹配。
+- 无法识别的素材内容返回 422 / INVALID_MEDIA，文件扩展名不能替代内容检查。
 - 图片、声音单文件最多 10 MB（10 × 1024 × 1024 字节），含 ZIP 包内导入素材；已有超过限制的素材在保存或发布时也会被拒绝，需要移除后重新上传。
 
 ## 模型与交互
@@ -56,9 +58,13 @@
 
 网页端固定厂商地址并隐藏高级参数；新建使用服务端默认参数，编辑保留原参数。模型选择失败时重试获取列表，不提供手写模型 ID 输入框。
 
+查询会话：`GET /conversations?page=1&page_size=50` 返回当前用户的会话数组，按创建时间和 ID 倒序；page_size 最大 200。`GET /conversations/{id}` 独立返回会话详情，不要求它出现在当前列表页；非本人资源返回 404。
+
 创建会话：`POST /mindcopies/{skill_id}/sessions`，body `{version_id, profile_id}`；返回 conversation 的 id。使用访问者自己的 profile。
 
 发送消息：`POST /conversations/{id}/messages`，body `{content, client_request_id}`，client_request_id 使用 UUID。相同 ID 重发不会重复生成。
+
+SSE 以 `message.completed`、`message.failed` 或 `message.cancelled` 中的一个事件结束；失败事件保留具体错误说明。连接在终止事件之前关闭时，前端报告 INCOMPLETE_STREAM。流式请求与普通请求共用 401 会话清理和结构化错误处理。
 
 SSE 事件：
 
@@ -78,6 +84,8 @@ data: {"id":"助手消息 ID","status":"completed","usage":null}
 旧会话模型切换：`PUT /conversations/{id}/model-profile`，body `{profile_id}`；已经开始的请求不切换。取消：`POST /conversations/{id}/messages/{message_id}/cancel`。
 
 ## GitHub
+
+独立同步页面已移除，后台定时任务保持运行；用户在 Skill 详情查看 GitHub 链接，在编辑页查看同步状态。下列任务与管理 API 保留供后台及运维使用。
 
 - 默认每周一 03:00（Asia/Shanghai）同步，每个 Skill 只选取调度时最新已发布且允许下载的版本；草稿不参与，周内旧版本保留在平台。
 - `GET /github/status` 返回 enabled、configured、非敏感 target、schedule（frequency、timezone、weekday、local_time、next_run_at、last_error）及 latest_batch（本人最近批次）。关闭时 next_run_at 仅表示计划时间。
