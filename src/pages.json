@@ -1,0 +1,16 @@
+{
+  "pages": [
+    {
+      "path": "pages/platform/index",
+      "style": {
+        "navigationBarTitleText": "云己 · Mind Skill 平台",
+        "navigationStyle": "custom"
+      }
+    }
+  ],
+  "globalStyle": {
+    "navigationBarTextStyle": "black",
+    "navigationBarTitleText": "云己",
+    "backgroundColor": "#f4f5f0"
+  }
+}

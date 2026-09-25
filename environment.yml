@@ -1,0 +1,9 @@
+name: dreamfly
+channels:
+  - conda-forge
+  - nodefaults
+dependencies:
+  # JavaScript dependencies are installed with npm, not conda/pip.
+  - nodejs=22
+  # Optional tooling/native-addon fallback; the application is not Python-based.
+  - python=3.12
