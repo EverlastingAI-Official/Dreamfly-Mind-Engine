@@ -8,6 +8,9 @@ import { uid, admin } from './auth.js';
 import { body, check, id, params, query, text } from './errors.js';
 import { config } from './config.js';
 import { importPackage, validateMind, validateSkillSubmission, parseMind, skillMarkdown, zipFiles, skillSlug, publicationSettings, assetMaxBytes } from './format.js';
+import { discoveryRoutes, publicSkill } from './discovery.js';
+import { publicMind } from './public-mind.js';
+export { publicMind } from './public-mind.js';
 
 function publicationFor(content:any,choices:any){
   const pub=publicationSettings(content,choices);
@@ -67,11 +70,6 @@ async function rememberSubmission(db:DB,skill:string,b:any,result:any){
   await db.query('INSERT INTO skill_submissions(skill_id,request_id,request,result) VALUES($1,$2,$3,$4)',[skill,b.request_id,b,result]);
 }
 
-export function publicMind(content:any,publication:any){
-  const m=structuredClone(content);m.memory.fragments=m.memory.fragments.filter((x:any)=>(publication.memory_ids||[]).includes(x.id));
-  m.assets=Object.fromEntries(Object.entries(m.assets).filter(([k])=>(publication.asset_keys||[]).includes(k)));
-  delete m.extensions;return m;
-}
 export async function ownedSkill(skillId:string,user:string,db:any=pool){
   const s=(await db.query('SELECT * FROM skills WHERE id=$1 AND owner_id=$2',[id(skillId),user])).rows[0];check(s,404,'NOT_FOUND','未找到 Skill');return s;
 }
@@ -112,6 +110,7 @@ async function upload(r:any,save:boolean){
   return {mind:pkg.mind,warnings:pkg.warnings};
 }
 export async function skillRoutes(app:FastifyInstance){
+  await discoveryRoutes(app);
   app.post('/skills/validate',async r=>r.isMultipart()?upload(r,false):{mind:validateMind(parseMind(body(r).content).mind),warnings:[]});
   app.post('/skills/import',async r=>upload(r,true));
   app.post('/assets',async r=>{
@@ -140,20 +139,14 @@ export async function skillRoutes(app:FastifyInstance){
   });
   app.patch('/skills/:id',async r=>writeSkill(uid(r),id(params(r).id),body(r),false,false));
   app.post('/skills/:id/submit',async r=>writeSkill(uid(r),id(params(r).id),body(r),true,true));
-  app.get('/skills',{config:{public:true}},async r=>{
-    const q=query(r),mine=q.scope==='mine',user=mine?uid(r):null,term=(q.search||'').slice(0,200);const page=Math.max(1,Number(q.page)||1);
-    return (await pool.query(`SELECT s.id,s.owner_id,s.slug,CASE WHEN $1::uuid IS NULL THEN v.content->>'name' ELSE s.name END AS name,
-      CASE WHEN $1::uuid IS NULL THEN v.content->>'description' ELSE s.description END AS description,s.status,s.published_version_id,u.display_name AS author
-      FROM skills s JOIN users u ON u.id=s.owner_id LEFT JOIN skill_versions v ON v.id=s.published_version_id
-      WHERE (($1::uuid IS NOT NULL AND s.owner_id=$1) OR ($1::uuid IS NULL AND s.status='published' AND s.publication->>'listed'='true' AND u.status='active'))
-      AND (CASE WHEN $1::uuid IS NULL THEN (v.content->>'name')||' '||(v.content->>'description') ELSE s.name||' '||s.description END) ILIKE $2 ORDER BY s.updated_at DESC LIMIT 24 OFFSET $3`,[user,`%${term}%`,(page-1)*24])).rows;
-  });
   app.get('/skills/:id',{config:{public:true}},async r=>{
     const s=(await pool.query('SELECT s.*,u.display_name AS author,u.status AS owner_status FROM skills s JOIN users u ON u.id=s.owner_id WHERE s.id=$1',[id(params(r).id)])).rows[0];
     check(s && (s.owner_id===r.user?.id||(s.status==='published'&&s.publication.listed&&s.owner_status==='active')),404,'NOT_FOUND','Skill 不存在');
-    const versions=(await pool.query('SELECT id,version,created_at FROM skill_versions WHERE skill_id=$1 ORDER BY created_at DESC',[s.id])).rows;
-    if(s.owner_id===r.user?.id)return {...s,versions};
-    const v=(await pool.query('SELECT content FROM skill_versions WHERE id=$1',[s.published_version_id])).rows[0];return {id:s.id,name:v.content.name,description:v.content.description,author:s.author,published_version_id:s.published_version_id,publication:{chat:!!s.publication.chat,download:!!s.publication.download},versions};
+    if(s.owner_id===r.user?.id){
+      const versions=(await pool.query('SELECT id,version,created_at FROM skill_versions WHERE skill_id=$1 ORDER BY created_at DESC',[s.id])).rows;
+      return {...s,versions};
+    }
+    return publicSkill(s.id,r.user?.id||null);
   });
   app.post('/skills/:id/versions',async r=>{
     const s=await ownedSkill(params(r).id,uid(r));validateSkillSubmission(s.draft);await validateAssets(s.draft,uid(r));const version=randomUUID();
@@ -163,6 +156,11 @@ export async function skillRoutes(app:FastifyInstance){
   app.post('/skills/:id/unpublish',async r=>{const s=await ownedSkill(params(r).id,uid(r));check(s.status!=='blocked',403,'BLOCKED','已被管理下架');await pool.query("UPDATE skills SET status='draft',revision=revision+1 WHERE id=$1 AND status<>'blocked'",[s.id]);return {unpublished:true};});
   app.get('/skills/:id/export',async(r,p)=>{
     const version=id(query(r).version);const v=await accessibleVersion(version,uid(r),'download');check(v.skill_id===id(params(r).id),404,'NOT_FOUND','版本不属于此 Skill');
+    if(query(r).scope==='public'){
+      const published=await publicSkill(v.skill_id,uid(r));
+      check(published.publication.download&&published.published_version_id===version,404,'NOT_FOUND','此发布版本已更新或不可下载');
+      v.content=publicMind(v.content,v.publication);
+    }
     const files=await exportFiles(v.content);const archive=await zipFiles(new Map([...files].map(([k,vv])=>[`${v.content.slug}/${k}`,vv])));
     return p.header('Content-Disposition',`attachment; filename="${v.content.slug}-${v.version}.zip"`).type('application/zip').send(archive);
   });

@@ -100,7 +100,7 @@ npm.cmd run dev:h5
 
 Windows PowerShell 中 `npm run dev` 通常先解析为 `npm.ps1`，`npm.cmd run dev` 则明确使用 Windows 命令入口；两者调用同一 npm、执行同一 dev 脚本。`npm.cmd` 避免部分 PowerShell 执行策略对 `.ps1` 的限制，不需要修改系统策略。`npm ci`/`npm.cmd ci` 只安装依赖，不启动应用。`--prefix server` 表示使用 server 子项目；根目录的 `dev` 是统一启动，server 的 `dev` 只启动 API。
 
-此前浏览器验收创建的本地示例账号为 `preview@example.test`，密码 `LocalPreviewOnly-2026`，只有普通用户权限；其中“本地验收示例”不含真实个人资料。它仅位于当前被忽略的开发数据库，并非代码中的默认账号或生产种子。新账号请使用真实邮箱注册并接收验证码。
+此前浏览器验收创建的普通权限本地示例账号仍保留；按用户要求，2026-09-25 已删除“本地验收示例” Skill 及其唯一发布版本。删除时无关联会话、素材或同步任务。它并非代码中的默认种子，重启应用不会重建。新账号请使用真实邮箱注册并接收验证码。
 
 ## 5. 邮箱身份与凭据
 

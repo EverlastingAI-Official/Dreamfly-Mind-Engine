@@ -4,6 +4,7 @@ const object=(properties:Record<string,unknown>,required:string[]=[])=>({type:'o
 const profile=object({name:string,provider:string,protocol:string,base_url:string,model:string,api_key:string,api_key_action:{enum:['keep','replace','clear']},consent:{type:'boolean'},parameters:object({max_tokens:{type:'integer'},timeout_seconds:{type:'number'},temperature:{type:'number'},context_chars:{type:'integer'}}),id:string,verified_at:{anyOf:[string,{type:'null'}]},api_key_configured:{type:'boolean'}},['name','provider','model']);
 const authFields={email:string,password:string,confirm:string,display_name:string,code:string,challenge_id:string};
 const schemas:Record<string,unknown>={
+  '/skills/:id/reactions/:kind':object({active:{type:'boolean'}},['active']),
   '/auth/email-codes':object({email:string,purpose:{enum:['register','reset_password']}},['email','purpose']),
   '/auth/register':object(authFields,['email','password','display_name','code','challenge_id']),
   '/auth/login':object(authFields,['email','password']),

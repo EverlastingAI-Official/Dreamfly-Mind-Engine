@@ -23,8 +23,14 @@
 - `POST /skills/{id}/publish`：兼容发布已保存草稿，接收 `{revision, request_id, listed, chat, download, memory_ids: [], compliance_confirmed: true}`，共用上述提交逻辑。必须明确确认拥有内容使用与发布授权并同意公开范围；确认标记随发布版本保存。这是用户声明与完整性检查，不是自动内容审核。
 - 页面新建时默认允许目录、交互、下载，记忆默认全部勾选。关闭目录会同时关闭交互和下载；服务端也强制此联动。允许下载即纳入每周 GitHub 同步，全部素材进入下载包和同步内容；github、asset_keys 由服务端推导，不接受独立覆盖。记忆仍按 memory_ids 选择。
 - 每周同步使用管理员配置的统一仓库和 Owner PAT；普通用户无需 GitHub 授权。GitHub 关闭或配置缺失不阻止保存、发布、查询、筛选和下载，内容等待后续每周调度。
-- `GET /skills?scope=mine` 返回当前用户资源，默认查询公开目录，支持 search 与 page。
+- `GET /skills` 默认查询公开目录；`scope=mine` 查询本人资源（需登录）。返回 `data: {items, total, page, page_size}`，原数组响应已更新，客户端请读取 `data.items`。
+- 查询参数：`search` 匹配已发布名称、说明、作者、Skill ID 或包名；ID/包名支持前缀匹配，中文和英文关键词均可使用，`%`、`_` 按普通字符处理。`language=zh|en` 筛选内容语言；`download=true|false`、`chat=true|false` 筛选权限；`collection=all|liked|favorites` 筛选全部、本人喜欢或本人收藏（后两项需登录）；`sort=newest|oldest|name|likes` 排序。`page` 从 1 开始，`page_size` 默认 24、最大 100。公开排序时间取当前发布版本时间，私有草稿修改不影响公开排序。
+- 列表返回公开喜欢计数 `like_count`、当前用户状态 `liked` / `favorited`、发布权限、语言及版本。收藏不提供公开计数或收藏者信息，喜欢和收藏也不会让下架或私有 Skill 出现在公开结果中。
+- `GET /skills/{id}/public` 始终返回当前公开版本，包括作者本人访问；返回发布信息、公开记忆/素材数量和反馈状态，不返回草稿或未发布版本列表。登录且作者允许下载时，`preview` 提供人格及按公开范围过滤的记忆；其余情况为 `null`。`GET /skills/{id}` 保留作者管理用途，非作者获得同样的公开投影。
+- `PUT /skills/{id}/reactions/like` 与 `PUT /skills/{id}/reactions/favorite` 接收 `{active: true|false}`，需要登录、Origin 和 CSRF。设置目标状态可安全重试，重复喜欢不重复计数；取消操作可用于清理已下架条目的本人反馈。
 - `GET /skills/{id}/export?version=<version_id>` 返回 ZIP。参数是平台版本 ID，不是 `1.0.0` 字符串。
+- 探索页下载使用 `GET /skills/{id}/export?scope=public&version=<version_id>`，需登录，且必须为当前仍允许下载的公开版本。作者从探索页下载也按公开范围过滤，旧版本或已撤销权限返回 404。ZIP 文件名包含包名和版本。
+- H5 分享链接为 `/#/pages/platform/index?skill=<Skill ID>`，未登录也能查看公开发布信息。页面支持复制 ID 与链接，登录后恢复原浏览上下文。界面中英切换不会翻译用户内容；编辑器可设置 Skill 内容语言。
 - `POST /assets` 接收一个 multipart 文件，返回 id 与规范资源 reference，可写入 `mind.assets`。页面分为图片、声音入口，先传 kind=image/audio 再传 file，后端按实际文件类型检查入口是否匹配。
 - 图片、声音单文件最多 10 MB（10 × 1024 × 1024 字节），含 ZIP 包内导入素材；已有超过限制的素材在保存或发布时也会被拒绝，需要移除后重新上传。
 

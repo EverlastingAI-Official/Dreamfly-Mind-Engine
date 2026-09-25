@@ -34,6 +34,7 @@ test('PostgreSQL account, skill, model ownership and conversation integration',a
     await pool.query('DELETE FROM jobs WHERE id=ANY($1::uuid[])',[[pending,success]]);
   });
   const {scheduleWeeklyGithub,weeklyWindow}=await import('../src/github-schedule.js');
+  await pool.query(await readFile('migrations/004_skill_reactions.sql','utf8'));
   const discoveryCalls:{endpoint:any;key:string}[]=[];
   const app=await buildApp({logger:false,transport:fakeModel,modelListTransport:async(endpoint,key)=>{discoveryCalls.push({endpoint,key});return [{id:'test-model',name:'Test model'}];}});await app.ready();
   const origin=process.env.APP_ORIGIN||'http://127.0.0.1:5173';
@@ -132,8 +133,48 @@ test('PostgreSQL account, skill, model ownership and conversation integration',a
       assert.equal(published.json().data.sync_job_id,null);
       assert.equal((await pool.query("SELECT count(*)::int n FROM jobs WHERE type='github'")).rows[0].n,0);
       const publicDetail=await request('GET',`/skills/${skillId}`,undefined,b);assert.equal(publicDetail.statusCode,200);assert.equal(publicDetail.json().data.draft,undefined);assert.ok(!publicDetail.body.includes('PRIVATE SECRET'));
-      const search=await request('GET','/skills?search=PRIVATE%20SECRET');assert.deepEqual(search.json().data,[]);
+      const search=await request('GET','/skills?search=PRIVATE%20SECRET');assert.deepEqual(search.json().data.items,[]);
       const download=await request('GET',`/skills/${skillId}/export?version=${versionId}`,undefined,b);assert.equal(download.statusCode,200,download.body.slice(0,100));const {importPackage}=await import('../src/format.js');const imported=await importPackage('skill.zip',download.rawPayload);assert.equal(imported.mind.memory.fragments.length,1);assert.equal(Object.keys(imported.mind.assets).length,2);
+    });
+    await t.test('discovery filters, public projection, private favorites and idempotent likes',async()=>{
+      const sid=randomUUID(),content=emptyMind('fixture');content.name='Discovery 思想';content.language='en';
+      content.persona.self_description='Published self';content.memory.fragments=[{id:'shared',content:'Visible memory'},{id:'hidden',content:'Discovery secret memory'}];
+      const created=await request('POST',`/skills/${sid}/submit`,{revision:0,request_id:randomUUID(),content,publication:{listed:true,chat:true,download:true,memory_ids:['shared']},compliance_confirmed:true},a);
+      assert.equal(created.statusCode,200,created.body);const version=created.json().data.version_id;
+      const query=async(suffix:string,user?:any)=>{const response=await request('GET','/skills?'+suffix,undefined,user);assert.equal(response.statusCode,200,response.body);return response.json().data;};
+      for(const search of [sid,sid.slice(0,8),`mind-${sid}`,'Discovery','思想','alice']){
+        assert.ok((await query(`search=${encodeURIComponent(search)}&language=en&download=true&chat=true`)).items.some((x:any)=>x.id===sid));
+      }
+      assert.equal((await query(`search=${sid}&language=zh`)).total,0);
+      assert.equal((await query('search=Discovery%20secret%20memory')).total,0);
+      assert.equal((await query('search=%25')).total,0);
+      const empty=await query(`search=${sid}&page=2&page_size=1`);assert.equal(empty.total,1);assert.deepEqual(empty.items,[]);
+      for(const sort of ['newest','oldest','name','likes'])assert.equal((await query(`search=${sid}&sort=${sort}`)).items[0].id,sid);
+      for(const invalid of ['page=1.5','page=Infinity','sort=unknown','page_size=101','chat=maybe'])assert.equal((await request('GET','/skills?'+invalid)).statusCode,422);
+      assert.equal((await request('GET','/skills?collection=favorites')).statusCode,401);
+      const publicUrl=`/skills/${sid}/public`;
+      const anon=(await request('GET',publicUrl)).json().data;assert.equal(anon.preview,null);assert.equal(anon.memory_count,1);assert.equal(anon.draft,undefined);assert.equal(anon.versions,undefined);
+      const owner=(await request('GET',publicUrl,undefined,a)).json().data;assert.equal(owner.is_owner,true);assert.deepEqual(owner.preview.memory.fragments,[content.memory.fragments[0]]);
+      const state=(await request('GET',`/skills/${sid}`,undefined,a)).json().data;
+      const saved=await request('PATCH',`/skills/${sid}`,{revision:state.revision,content:{...state.draft,name:'PRIVATE DRAFT TITLE',persona:{...state.draft.persona,self_description:'PRIVATE DRAFT SELF'}}},a);assert.equal(saved.statusCode,200,saved.body);
+      assert.equal((await query('search=PRIVATE%20DRAFT%20TITLE')).total,0);
+      assert.equal((await request('GET',publicUrl,undefined,a)).json().data.name,content.name);
+      assert.equal((await request('PUT',`/skills/${sid}/reactions/like`,{active:true})).statusCode,401);
+      const likes=await Promise.all([1,2,3].map(()=>request('PUT',`/skills/${sid}/reactions/like`,{active:true},b)));
+      for(const response of likes)assert.equal(response.statusCode,200,response.body);
+      const favorite=await request('PUT',`/skills/${sid}/reactions/favorite`,{active:true},b);assert.equal(favorite.json().data.like_count,1);assert.equal(favorite.json().data.favorited,true);
+      assert.equal((await query(`search=${sid}&collection=favorites`,b)).total,1);assert.equal((await query(`search=${sid}&collection=liked`,b)).total,1);
+      assert.equal((await query(`search=${sid}&collection=favorites`,a)).total,0);
+      const outsider=(await request('GET',publicUrl,undefined,a)).json().data;assert.equal(outsider.favorited,false);assert.equal(outsider.like_count,1);assert.equal(outsider.favorite_count,undefined);
+      const zipped=await request('GET',`/skills/${sid}/export?scope=public&version=${version}`,undefined,a);assert.equal(zipped.statusCode,200,zipped.body.slice(0,100));
+      const {importPackage}=await import('../src/format.js');assert.deepEqual((await importPackage('skill.zip',zipped.rawPayload)).mind.memory.fragments,[content.memory.fragments[0]]);
+      const unlike=await request('PUT',`/skills/${sid}/reactions/like`,{active:false},b);assert.equal(unlike.json().data.like_count,0);
+      await request('POST',`/skills/${sid}/unpublish`,undefined,a);
+      assert.equal((await query(`search=${sid}&collection=favorites`,b)).total,0);
+      assert.equal((await request('GET',publicUrl,undefined,a)).statusCode,404);
+      assert.equal((await request('GET',`/skills/${sid}/export?scope=public&version=${version}`,undefined,a)).statusCode,404);
+      assert.equal((await request('PUT',`/skills/${sid}/reactions/like`,{active:true},b)).statusCode,404);
+      assert.equal((await request('PUT',`/skills/${sid}/reactions/favorite`,{active:false},b)).statusCode,200);
     });
     await t.test('unlisted publication disables interaction, downloads and GitHub despite conflicting request flags',async()=>{
       const draft=emptyMind();draft.name='';draft.persona.self_description='我重视独立思考。';draft.memory.fragments=[{id:'one',content:'一次学习经历'}];
@@ -277,7 +318,7 @@ test('PostgreSQL account, skill, model ownership and conversation integration',a
       try{
         const response=await request('POST','/skills/'+sid+'/submit',payload,a);assert.equal(response.json().data.published,true);
         assert.equal((await request('GET','/skills/'+sid+'/export?version='+response.json().data.version_id,undefined,b)).statusCode,200);
-        assert.ok((await request('GET','/skills?search=weekly-download')).json().data.some((x:any)=>x.id===sid));
+        assert.ok((await request('GET','/skills?search=weekly-download')).json().data.items.some((x:any)=>x.id===sid));
         const due=new Date('2030-03-03T19:00:00Z');
         assert.equal(await scheduleWeeklyGithub(due),null);
         assert.ok((await pool.query('SELECT last_error FROM github_schedule')).rows[0].last_error);
