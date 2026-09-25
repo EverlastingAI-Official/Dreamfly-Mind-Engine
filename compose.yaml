@@ -1,6 +1,6 @@
 name: dreamfly
 
-# Runnable infrastructure only. API/worker/web/migrations are not implemented yet.
+# Infrastructure only. Application services exist, but are not containerized here yet.
 # Remote default: PostgreSQL has no host port. Use compose.dev.yaml locally.
 services:
   db:

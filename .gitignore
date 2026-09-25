@@ -7,8 +7,6 @@ unpackage/
 !.env.example
 !.env.production.example
 secrets/
-paper/
-docs/
 data/
 backups/
 .conda/
