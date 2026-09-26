@@ -38,6 +38,10 @@
 
 ## 模型与交互
 
+预制头像随 Skill 内容保存：`mind.avatar_id` 可选值为 `boy`、`girl`、`scholar`、`explorer`、`cat`、`fox`、`rabbit`、`robot`。省略时前端显示机器人，兼容已有 Skill；新建默认选择机器人。图片位于 `/static/avatars/{avatar_id}.webp`，无需上传或生成调用。
+
+Skill 列表及公开详情返回 `avatar_id`。我的 Skills 读取草稿头像，广场读取已发布版本；修改头像需提交发布后才对外生效。会话列表及详情也返回 `avatar_id`，取自会话绑定的 Skill 版本，因此已有会话保留原版本形象。导入和导出保留该编号。
+
 `POST /model-profiles` 接收 name、provider、model、api_key、api_key_action、consent、parameters；custom 厂商另需 base_url、protocol。parameters 支持 max_tokens、timeout_seconds、temperature、context_chars。GET 从不返回密钥。
 
 ```json

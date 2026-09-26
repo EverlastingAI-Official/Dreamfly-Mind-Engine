@@ -10,6 +10,7 @@ export interface Mind {
   name: string;
   description: string;
   language?: string;
+  avatar_id?: string;
   persona: { instructions: string; self_description?: string; values?: string[] };
   memory: { fragments: MemoryFragment[] };
   assets: Record<string, string>;
@@ -27,6 +28,14 @@ export interface Publication {
 }
 export type PublicationChoices = Partial<Publication>;
 export const mindSchema: Record<string, unknown>;
+export interface AvatarPreset {
+  id: string;
+  name: string;
+  name_en: string;
+}
+export const avatarPresets: AvatarPreset[];
+export const defaultAvatarId: string;
+export function avatarPreset(id?: string | null): AvatarPreset;
 export const assetMaxBytes: number;
 export function emptyMind(slug?: string): Mind;
 export function skillSlug(id: string): string;

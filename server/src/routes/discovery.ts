@@ -43,6 +43,7 @@ export async function discoveryRoutes(app: FastifyInstance) {
     const name = mine ? 's.name' : "v.content->>'name'",
       description = mine ? 's.description' : "v.content->>'description'";
     const language = mine ? "s.draft->>'language'" : "v.content->>'language'";
+    const avatar = mine ? "s.draft->>'avatar_id'" : "v.content->>'avatar_id'";
     const values: unknown[] = [user];
     const add = (value: unknown) => {
       values.push(value);
@@ -77,7 +78,7 @@ export async function discoveryRoutes(app: FastifyInstance) {
       await pool.query(
         `WITH matches AS (
       SELECT s.id,s.slug,${name} AS name,${description} AS description,s.status,s.published_version_id,
-      u.display_name AS author,${language} AS language,v.version,${time} AS listed_at,
+      u.display_name AS author,${language} AS language,${avatar} AS avatar_id,v.version,${time} AS listed_at,
       jsonb_build_object('listed',COALESCE((s.publication->>'listed')::boolean,false),'chat',COALESCE((s.publication->>'chat')::boolean,false),'download',COALESCE((s.publication->>'download')::boolean,false)) AS publication,
       ${reactions},row_number() OVER(ORDER BY ${sort === 'name' ? `(${name}) ASC` : sort === 'likes' ? "(SELECT count(*) FROM skill_reactions WHERE skill_id=s.id AND kind='like') DESC" : order},s.id) AS position
       FROM skills s JOIN users u ON u.id=s.owner_id LEFT JOIN skill_versions v ON v.id=s.published_version_id

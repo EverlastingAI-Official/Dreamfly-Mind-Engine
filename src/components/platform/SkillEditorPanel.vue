@@ -65,6 +65,18 @@
         </n-label>
       </view>
       <view class="panel">
+        <h2>{{ tr('选择形象', 'Choose an avatar') }}</h2>
+        <p class="muted">
+          {{
+            tr(
+              '形象将显示在 Skill 广场和聊天中。保存草稿后，提交发布即可更新公开形象。',
+              'Your avatar appears in the Skill commons and chats. Publish your saved changes to update the public avatar.',
+            )
+          }}
+        </p>
+        <avatar-picker v-model="draft.avatar_id" />
+      </view>
+      <view class="panel">
         <view class="section-heading">
           <h2>记忆片段（必填）</h2>
           <n-button class="small" @click="addMemory">添加记忆</n-button>
@@ -107,6 +119,7 @@
     <view>
       <view class="panel sticky">
         <h2>发布预览</h2>
+        <skill-avatar :avatar-id="draft.avatar_id" :name="draft.name" :size="88" />
         <p>名称和人格会随 Skill 发布。请确认下方公开范围。</p>
         <n-label class="check">
           <n-input type="checkbox" v-model="publication.listed" @change="listingChanged" />
@@ -203,6 +216,8 @@ const { starting, startError, beginChat } = useStartChat();
 const copySkill = (value) => copy(value, notify);
 import { NInput, NTextarea, NButton, NLabel } from '../native.js';
 import GithubSkillLink from '../GithubSkillLink.vue';
+import AvatarPicker from '../AvatarPicker.vue';
+import SkillAvatar from '../SkillAvatar.vue';
 const {
   detail,
   editingId,

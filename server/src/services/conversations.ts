@@ -19,6 +19,7 @@ export function conversationView(row: Conversation): ConversationDto {
     id: row.id,
     skill_version_id: row.skill_version_id,
     title: row.title,
+    avatar_id: row.avatar_id,
     profile_id: row.profile_id,
     model_config: row.model_config,
     created_at: row.created_at.toISOString(),
@@ -26,7 +27,9 @@ export function conversationView(row: Conversation): ConversationDto {
 }
 export async function conversation(conversationId: string, user: string) {
   const result = await pool.query<Conversation>(
-    'SELECT * FROM conversations WHERE id=$1 AND user_id=$2',
+    `SELECT c.*, v.content->>'avatar_id' AS avatar_id
+     FROM conversations c JOIN skill_versions v ON v.id=c.skill_version_id
+     WHERE c.id=$1 AND c.user_id=$2`,
     [id(conversationId), user],
   );
   check(result.rows[0], 'NOT_FOUND', '会话不存在');
@@ -45,7 +48,9 @@ export async function listConversations(user: string, page: number, size: number
   );
   return (
     await pool.query<Conversation>(
-      'SELECT * FROM conversations WHERE user_id=$1 ORDER BY created_at DESC,id DESC LIMIT $2 OFFSET $3',
+      `SELECT c.*, v.content->>'avatar_id' AS avatar_id
+       FROM conversations c JOIN skill_versions v ON v.id=c.skill_version_id
+       WHERE c.user_id=$1 ORDER BY c.created_at DESC,c.id DESC LIMIT $2 OFFSET $3`,
       [user, size, (page - 1) * size],
     )
   ).rows.map(conversationView);

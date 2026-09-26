@@ -113,6 +113,7 @@ export interface ReactionDto {
   favorited: boolean;
 }
 export interface SkillSummaryDto extends ReactionDto {
+  avatar_id?: string | null;
   id: string;
   slug: string;
   name: string;
@@ -126,6 +127,7 @@ export interface SkillSummaryDto extends ReactionDto {
   publication: Pick<Publication, 'listed' | 'chat' | 'download'>;
 }
 export interface PublicSkillDto extends ReactionDto {
+  avatar_id?: string | null;
   id: string;
   slug: string;
   is_owner: boolean;
@@ -179,6 +181,7 @@ export interface UploadedAssetDto {
 export type Usage = Record<string, number>;
 export type MessageStatus = 'generating' | 'completed' | 'failed' | 'cancelled';
 export interface ConversationDto {
+  avatar_id?: string | null;
   id: string;
   skill_version_id: string;
   title: string;

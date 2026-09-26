@@ -47,6 +47,7 @@ export async function publicSkill(skill: string, user: string | null): Promise<P
     slug: row.slug,
     is_owner: row.owner_id === user,
     name: content.name,
+    avatar_id: content.avatar_id,
     description: content.description,
     author: row.author,
     language: content.language,

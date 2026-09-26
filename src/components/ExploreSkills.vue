@@ -108,7 +108,7 @@
       <view class="cards" :aria-busy="loading">
         <view v-for="skill in items" :key="skill.id" class="skill-card panel">
           <view class="row spaced">
-            <text class="avatar">{{ skill.name.slice(0, 1) }}</text>
+            <skill-avatar :avatar-id="skill.avatar_id" :name="skill.name" />
             <text class="badge">{{ skill.language || '—' }}</text>
           </view>
           <h3>{{ skill.name }}</h3>
@@ -186,6 +186,7 @@
       </view>
       <template v-else>
         <text class="eyebrow detail-heading">MIND SKILL</text>
+        <skill-avatar :avatar-id="detail.avatar_id" :name="detail.name" :size="88" />
         <h1>{{ detail.name }}</h1>
         <p class="lead">{{ detail.description }}</p>
         <view class="panel">
@@ -347,6 +348,7 @@
 import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from 'vue';
 import { NButton, NForm, NInput, NLabel } from './native.js';
 import GithubSkillLink from './GithubSkillLink.vue';
+import SkillAvatar from './SkillAvatar.vue';
 import { useStartChat } from '../composables/useStartChat.js';
 import { usePageUi } from '../composables/usePageUi.js';
 import { api, auth } from '../services/platform.js';

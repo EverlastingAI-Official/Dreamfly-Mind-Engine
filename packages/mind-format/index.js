@@ -1,3 +1,21 @@
+export const avatarPresets = [
+  { id: 'boy', name: '蓝发少年', name_en: 'Blue-haired companion' },
+  { id: 'girl', name: '栗发少女', name_en: 'Chestnut-haired companion' },
+  { id: 'scholar', name: '温和学者', name_en: 'Gentle scholar' },
+  { id: 'explorer', name: '银发探索者', name_en: 'Silver-haired explorer' },
+  { id: 'cat', name: '橘猫伙伴', name_en: 'Tabby cat' },
+  { id: 'fox', name: '狐狸伙伴', name_en: 'Fox' },
+  { id: 'rabbit', name: '兔子伙伴', name_en: 'Rabbit' },
+  { id: 'robot', name: '机器人伙伴', name_en: 'Robot' },
+];
+export const defaultAvatarId = 'robot';
+export function avatarPreset(id) {
+  return (
+    avatarPresets.find((avatar) => avatar.id === id) ||
+    avatarPresets.find((avatar) => avatar.id === defaultAvatarId)
+  );
+}
+
 export const mindSchema = {
   type: 'object',
   additionalProperties: false,
@@ -19,6 +37,7 @@ export const mindSchema = {
     name: { type: 'string', minLength: 1, maxLength: 100 },
     description: { type: 'string', minLength: 1, maxLength: 1024 },
     language: { type: 'string', maxLength: 30 },
+    avatar_id: { type: 'string', enum: avatarPresets.map((avatar) => avatar.id) },
     persona: {
       type: 'object',
       additionalProperties: false,
@@ -67,6 +86,7 @@ export function emptyMind(slug = 'my-mind') {
     name: '我的 MindCopy',
     description: '我的人格与记忆',
     language: 'zh-CN',
+    avatar_id: defaultAvatarId,
     persona: {
       instructions: '请以我的表达方式交流，记忆中没有的经历不要编造。',
       self_description: '',

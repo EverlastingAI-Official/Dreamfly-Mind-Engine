@@ -11,7 +11,8 @@
         :class="{ selected: c.id === currentConversation?.id }"
         @click="run(() => openConversation(c))"
       >
-        {{ c.title }}
+        <skill-avatar :avatar-id="c.avatar_id" :name="c.title" :size="36" />
+        <span class="conversation-title">{{ c.title }}</span>
       </n-button>
       <view class="row pagination">
         <n-button :disabled="busy || page === 1" @click="run(() => loadConversations(page - 1))"
@@ -27,7 +28,14 @@
     <view class="panel chat-panel">
       <template v-if="currentConversation">
         <view class="row spaced">
-          <h2>{{ currentConversation.title }}</h2>
+          <view class="row chat-identity">
+            <skill-avatar
+              :avatar-id="currentConversation.avatar_id"
+              :name="currentConversation.title"
+              :size="48"
+            />
+            <h2>{{ currentConversation.title }}</h2>
+          </view>
           <view class="row">
             <n-button class="small" @click="run(renameConversation)"> 重命名 </n-button>
             <n-button class="small danger" :disabled="generating" @click="run(deleteConversation)">
@@ -38,9 +46,14 @@
         <p class="muted">会话记忆不会自动写入公开 Skill。</p>
         <view class="messages" ref="messageBox">
           <view v-for="m in messages" :key="m.id" class="message" :class="m.role">
-            <text class="message-role">
-              {{ m.role === 'user' ? '你' : 'MindCopy' }}
-            </text>
+            <view class="message-identity">
+              <skill-avatar
+                v-if="m.role === 'assistant'"
+                :avatar-id="currentConversation.avatar_id"
+                :size="32"
+              />
+              <text class="message-role">{{ m.role === 'user' ? '你' : 'MindCopy' }}</text>
+            </view>
             <view class="message-content">
               {{ m.content || (m.status === 'generating' ? '正在思考…' : '未生成文本') }}
             </view>
@@ -92,6 +105,7 @@ import { navigate as go } from '../../services/navigation.mjs';
 const props = defineProps({ query: Object, active: Boolean });
 const { run, notify, busy } = usePageUi();
 import { NTextarea, NButton, NForm } from '../native.js';
+import SkillAvatar from '../SkillAvatar.vue';
 const {
   conversations,
   currentConversation,
@@ -120,3 +134,31 @@ const removeGuard = getCurrentInstance().proxy.$router.beforeEach(() => {
 onUnmounted(removeGuard);
 onMounted(() => run(() => load(props.query.id)));
 </script>
+
+<style scoped>
+.platform .conversation-item {
+  display: flex;
+  justify-content: flex-start;
+}
+.conversation-title {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.chat-identity {
+  flex-wrap: nowrap;
+  min-width: 0;
+}
+.chat-identity h2 {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.message-identity {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.message-identity .message-role {
+  margin-bottom: 0;
+}
+</style>

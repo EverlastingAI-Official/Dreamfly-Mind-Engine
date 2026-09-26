@@ -54,7 +54,7 @@
   <view class="cards">
     <view v-for="skill in skills" :key="skill.id" class="skill-card panel">
       <view class="row spaced">
-        <text class="avatar">{{ skill.name.slice(0, 1) }}</text>
+        <skill-avatar :avatar-id="skill.avatar_id" :name="skill.name" />
         <text class="badge">{{ statusName(skill.status) }}</text>
       </view>
       <h3>{{ skill.name }}</h3>
@@ -102,6 +102,7 @@ import {
 } from '../../services/skillActions.js';
 import { statusName } from '../../services/presentation.js';
 import { NInput, NButton } from '../native.js';
+import SkillAvatar from '../SkillAvatar.vue';
 const props = defineProps({ active: Boolean });
 const { busy, run, notify } = usePageUi();
 const search = ref(''),
