@@ -1,19 +1,42 @@
+# Dependencies and package caches
 node_modules/
+.npm-cache/
+
+# UniApp, Vite and TypeScript build output
 dist/
 unpackage/
+.vite/
 *.tsbuildinfo
+
+# Local environment and credentials (keep configuration examples)
 .env
 .env.*
 !.env.example
 !.env.production.example
 secrets/
+
+# Runtime storage and backups
 data/
 backups/
+
+# Test coverage
+coverage/
+.nyc_output/
+
+# Local tooling and reference material
 .conda/
 .venv/
 /.references/
+
+# Logs and temporary files
 *.log
+*.pid
+*.pid.lock
+*.tmp
+*.swp
+*.swo
+
+# Operating system files
 .DS_Store
 Thumbs.db
-
-.npm-cache/
+Desktop.ini
