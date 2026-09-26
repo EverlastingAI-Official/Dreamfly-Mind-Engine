@@ -2,7 +2,7 @@
 
 基于 Vue / UniApp 的 H5 前端、Fastify / TypeScript 后端和 PostgreSQL，支持邮箱验证码注册、服务端会话、意识 Skill 上传与发布、用户模型配置、MindCopy 流式交互和 GitHub 每周后台同步。
 
-当前为本地可运行版本，服务器 Docker 部署暂缓。真实 SMTP、模型 API 和 GitHub Owner PAT 需要配置后联调；完整验证范围见 [实施记录](docs/IMPLEMENTATION_STATUS.md)。
+当前支持本地开发，并提供独立的 Docker Compose 生产部署配置（API、worker、H5、全新 PostgreSQL）。域名与 SMTP 可预留后填写，尚未部署到服务器；配置与操作步骤见 [生产部署说明](docs/PRODUCTION_DEPLOYMENT.md)。真实 SMTP、模型 API 和 GitHub Owner PAT 需要配置后联调；实际验证范围见 [实施记录](docs/IMPLEMENTATION_STATUS.md)。
 
 ## 开始使用
 
@@ -37,6 +37,7 @@ npm.cmd run dev
 | `vite.config.js`、`index.html` | 前端构建配置与 H5 入口 |
 | `.env.example` | 前端及基础设施环境变量模板 |
 | `compose.yaml`、`compose.dev.yaml` | 基础设施及本地 Docker 覆盖配置，尚非完整应用部署 |
+| `Dockerfile`、`compose.production.yaml`、`deploy/` | 独立生产镜像、组件编排与宝塔反向代理模板 |
 | `environment.yml` | 可选 Conda 工具环境 |
 
 `node_modules/`、`dist/`、`.npm-cache/` 为本地产物；`data/`、`secrets/`、实际 `.env` 为本地数据或凭据。这些内容由 `.gitignore` 排除。用户文档、参考论文和环境变量示例可纳入 Git。
@@ -44,6 +45,7 @@ npm.cmd run dev
 ## 文档
 
 - [本地运行与配置](docs/LOCAL_DEVELOPMENT.md)
+- [生产部署与备份恢复](docs/PRODUCTION_DEPLOYMENT.md)
 - [统一 API](docs/API.md)
 - [代码结构与职责](docs/CODE_STRUCTURE.md)
 - [实施状态与验证记录](docs/IMPLEMENTATION_STATUS.md)

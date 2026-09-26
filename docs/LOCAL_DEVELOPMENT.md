@@ -1,6 +1,6 @@
 # 本地运行与配置
 
-本轮交付本地应用，不执行远程服务器或 Docker 部署。现有 Compose 基础设施文件保留，尚未补为完整生产应用部署。
+本文介绍本地开发。`compose.yaml` 与 `compose.dev.yaml` 保留为本地数据库配置；独立生产编排见 [生产部署说明](PRODUCTION_DEPLOYMENT.md)，不与本地文件合并。
 
 ## 1. 当前实现
 

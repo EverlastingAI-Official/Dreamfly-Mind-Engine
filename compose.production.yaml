@@ -1,0 +1,120 @@
+name: dreamfly-production
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+x-backend: &backend
+  image: dreamfly-backend:${IMAGE_TAG:-local}
+  build:
+    context: .
+    target: backend
+  env_file: ./server/.env.production
+  environment:
+    NODE_ENV: production
+    HOST: 0.0.0.0
+    PORT: "3001"
+    PGHOST: db
+    PGPORT: "5432"
+    PGDATABASE: dreamfly
+    PGUSER: dreamfly
+    PGPASSWORD_FILE: /run/secrets/postgres_password
+    ASSET_STORAGE_DIR: /app/data/assets
+  secrets:
+    - postgres_password
+    - email_code_secret
+    - api_key_encryption_key
+    - smtp_password
+    - github_owner_token
+  init: true
+  logging: *logging
+
+services:
+  db:
+    image: postgres:17-bookworm
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: dreamfly
+      POSTGRES_USER: dreamfly
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+    secrets:
+      - postgres_password
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U dreamfly -d dreamfly"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    logging: *logging
+
+  migrate:
+    <<: *backend
+    command: ["node", "dist/migrate.js"]
+    restart: "no"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  api:
+    <<: *backend
+    restart: unless-stopped
+    stop_grace_period: 150s
+    volumes:
+      - assets:/app/data/assets
+    depends_on:
+      db:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "node", "--input-type=module", "-e", "const r = await fetch('http://127.0.0.1:3001/api/v1/health', {signal: AbortSignal.timeout(3000)}); if (!r.ok) process.exit(1)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+  worker:
+    <<: *backend
+    command: ["node", "dist/worker.js"]
+    restart: unless-stopped
+    stop_grace_period: 150s
+    volumes:
+      - assets:/app/data/assets:ro
+    depends_on:
+      db:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
+  web:
+    image: dreamfly-web:${IMAGE_TAG:-local}
+    build:
+      context: .
+      target: web
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${WEB_PORT:-18080}:8080"
+    depends_on:
+      api:
+        condition: service_healthy
+    logging: *logging
+
+secrets:
+  postgres_password:
+    file: ./secrets/production/postgres_password.txt
+  email_code_secret:
+    file: ./secrets/production/email_code_secret.txt
+  api_key_encryption_key:
+    file: ./secrets/production/api_key_encryption_key.txt
+  smtp_password:
+    file: ./secrets/production/smtp_password.txt
+  github_owner_token:
+    file: ./secrets/production/github_owner_token.txt
+
+volumes:
+  postgres_data:
+  assets:

@@ -2,6 +2,7 @@
   "name": "uni-preset-vue",
   "version": "0.0.0",
   "scripts": {
+    "setup:production": "node scripts/setup-production.mjs",
     "preview:h5": "node scripts/serve-h5.mjs",
     "test:routing": "node --test scripts/navigation.test.mjs",
     "dev": "node scripts/dev.mjs",

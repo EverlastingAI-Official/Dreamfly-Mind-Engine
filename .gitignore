@@ -15,13 +15,22 @@ vite.config.*.timestamp-*.js
 .env
 .env.*
 !.env.example
-!.env.production.example
+!.env.*.example
 secrets/
+
+# Local TLS certificates and site-specific proxy overrides
+/certs/
+/deploy/certs/
+/deploy/nginx/*.local.conf
 
 # Runtime storage (including local PostgreSQL, dev logs and process registry)
 data/
 # Database and asset backups
 backups/
+
+# Locally exported application images (docker save)
+/dreamfly-*.tar
+/dreamfly-*.tar.gz
 
 # Test coverage
 coverage/

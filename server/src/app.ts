@@ -27,6 +27,8 @@ export async function buildApp(
   } = {},
 ) {
   const app = Fastify({
+    // Compose accepts forwarding headers from its private network only.
+    trustProxy: process.env.TRUST_PROXY || false,
     ajv: { customOptions: { removeAdditional: false } },
     logger: options.logger ?? {
       level: process.env.LOG_LEVEL || 'info',
