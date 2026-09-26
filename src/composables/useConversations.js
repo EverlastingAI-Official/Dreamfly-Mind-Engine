@@ -1,7 +1,7 @@
 import { ref, nextTick, onScopeDispose } from 'vue';
 import { api, sendMessage } from '../services/platform.js';
 import { navigate, validId } from '../services/navigation.mjs';
-import { tr } from '../services/locale.js';
+import { tr, publicError } from '../services/locale.js';
 export function useConversations({ notify }) {
   const conversations = ref([]),
     currentConversation = ref(null),
@@ -74,7 +74,7 @@ export function useConversations({ notify }) {
             Object.assign(assistant, { status: data.status, usage: data.usage });
           if (event === 'message.failed') {
             failed = true;
-            notify(data.message || '生成失败', 'error');
+            notify(publicError(data.error), 'error');
           }
           nextTick(() => {
             const element = messageBox.value?.$el || messageBox.value;

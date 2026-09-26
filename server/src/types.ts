@@ -1,5 +1,23 @@
-import type { Mind, Publication, PublicationChoices } from '../../packages/mind-format/index.js';
-export type { Mind, Publication, PublicationChoices };
+import type { Mind, PublicationChoices } from '../../packages/mind-format/index.js';
+import type {
+  ModelConfig,
+  Usage,
+  GithubTarget,
+  ConversationDto,
+} from '../../packages/api/index.js';
+export type { Mind, Publication, PublicationChoices } from '../../packages/mind-format/index.js';
+export type {
+  SkillWrite,
+  SkillWriteResult,
+  ModelParameters,
+  ModelConfig,
+  ModelProfileInput,
+  Usage,
+  GithubTarget,
+  JobResult,
+} from '../../packages/api/index.js';
+
+// Persistence records belong here. Public request/response DTOs live in packages/api.
 export interface Skill {
   id: string;
   owner_id: string;
@@ -20,38 +38,6 @@ export interface SkillVersion {
   content: Mind;
   publication: PublicationChoices;
 }
-export interface SkillWrite extends PublicationChoices {
-  id?: string;
-  revision: number;
-  content?: Mind;
-  publication?: PublicationChoices;
-  request_id?: string;
-  compliance_confirmed?: boolean;
-}
-export interface SkillWriteResult {
-  id: string;
-  slug: string;
-  revision: number;
-  published: boolean;
-  version_id?: string;
-  version?: string;
-  unchanged?: boolean;
-  sync_job_id?: null;
-  sync_policy?: 'weekly' | 'disabled';
-}
-export interface ModelParameters {
-  timeout_seconds?: number;
-  max_tokens?: number;
-  context_chars?: number;
-  temperature?: number;
-}
-export interface ModelConfig {
-  provider: string;
-  protocol: string;
-  base_url: string;
-  model: string;
-  parameters: ModelParameters;
-}
 export interface ModelProfile extends ModelConfig {
   id: string;
   user_id: string;
@@ -60,22 +46,10 @@ export interface ModelProfile extends ModelConfig {
   consent: boolean;
   verified_at: Date | null;
 }
-export interface ModelProfileInput extends ModelConfig {
-  name: string;
-  consent?: boolean;
-  api_key?: string;
-  api_key_action?: 'keep' | 'replace' | 'clear';
-}
-export interface Conversation {
-  id: string;
+export interface Conversation extends Omit<ConversationDto, 'created_at'> {
   user_id: string;
-  skill_version_id: string;
-  title: string;
-  profile_id: string | null;
-  model_config: ModelConfig;
   created_at: Date;
 }
-export type Usage = Record<string, number>;
 export interface ChatMessage {
   role: string;
   content: string;
@@ -83,13 +57,6 @@ export interface ChatMessage {
 export interface ModelEvent {
   delta?: string;
   usage?: Usage;
-}
-export interface GithubTarget {
-  auth_mode: 'owner';
-  owner: string;
-  repo: string;
-  branch: string;
-  mode: 'commit';
 }
 export interface GithubJob {
   id: string;
@@ -104,9 +71,3 @@ export type QueuedJob =
       attempts: number;
       payload: { challenge_id: string; code: string };
     };
-export interface JobResult {
-  status: 'succeeded' | 'skipped' | 'deferred';
-  reason?: string;
-  commit_url?: string;
-  skill_url?: string;
-}

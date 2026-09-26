@@ -38,7 +38,8 @@
     "dev:server": "npm --prefix server run dev",
     "build:server": "npm --prefix server run build",
     "format": "prettier --write \"src/**/*.{js,mjs,vue}\" \"server/src/**/*.ts\" \"packages/mind-format/*.{js,ts}\"",
-    "test:frontend": "node --test tests/frontend/*.test.mjs"
+    "test:frontend": "node --test tests/frontend/*.test.mjs",
+    "typecheck:api": "node server/node_modules/typescript/bin/tsc -p tsconfig.api.json"
   },
   "dependencies": {
     "@dcloudio/uni-app": "3.0.0-4040520250104002",

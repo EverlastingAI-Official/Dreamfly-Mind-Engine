@@ -1,3 +1,4 @@
+import type { ApiRoute } from '../../../packages/api/index.js';
 import type { FastifyInstance } from 'fastify';
 import { readFile, unlink } from 'node:fs/promises';
 import path from 'node:path';
@@ -8,28 +9,22 @@ import { check, HttpError, id, params } from '../errors.js';
 import { assetId, media, storeAsset } from '../services/assets.js';
 import { accessibleVersion } from '../services/skills.js';
 export async function assetRoutes(app: FastifyInstance) {
-  app.post('/assets', async (r) => {
+  app.post<ApiRoute<'POST /assets'>>('/assets', async (r) => {
     const f = await r.file();
-    check(f, 422, 'NO_FILE', '请选择素材');
+    check(f, 'NO_FILE');
     const data = await f.toBuffer(),
       kind = (f.fields.kind as { value?: unknown })?.value;
     if (kind !== undefined) {
-      check(
-        kind === 'image' || kind === 'audio',
-        422,
-        'INVALID_ASSET_KIND',
-        '请选择图片或声音素材',
-      );
+      check(kind === 'image' || kind === 'audio', 'INVALID_ASSET_KIND');
       check(
         media(data)[0].startsWith(`${kind}/`),
-        422,
         'ASSET_KIND_MISMATCH',
         kind === 'image' ? '此入口仅接受图片' : '此入口仅接受声音',
       );
     }
     return storeAsset(uid(r), f.filename, data);
   });
-  app.get(
+  app.get<ApiRoute<'GET /assets'>>(
     '/assets',
     async (r) =>
       (
@@ -41,7 +36,7 @@ export async function assetRoutes(app: FastifyInstance) {
   );
   app.get('/assets/:id', async (r, p) => {
     const a = (await pool.query('SELECT * FROM assets WHERE id=$1', [id(params(r).id)])).rows[0];
-    check(a, 404, 'NOT_FOUND', '素材不存在');
+    check(a, 'NOT_FOUND');
     if (a.user_id !== uid(r)) {
       const versions = (
         await pool.query('SELECT version_id FROM version_assets WHERE asset_id=$1', [a.id])
@@ -55,7 +50,7 @@ export async function assetRoutes(app: FastifyInstance) {
           if (!(error instanceof HttpError && error.statusCode === 404)) throw error;
         }
       }
-      check(allowed, 404, 'NOT_FOUND', '素材不存在');
+      check(allowed, 'NOT_FOUND');
     }
     return p
       .header('Cache-Control', 'private, no-store')
@@ -63,13 +58,11 @@ export async function assetRoutes(app: FastifyInstance) {
       .type(a.mime)
       .send(await readFile(path.join(config.assets, a.id)));
   });
-  app.delete('/assets/:id', async (r) => {
+  app.delete<ApiRoute<'DELETE /assets/:id'>>('/assets/:id', async (r) => {
     const a = id(params(r).id);
     check(
       !(await pool.query('SELECT 1 FROM version_assets WHERE asset_id=$1', [a])).rowCount,
-      409,
       'ASSET_IN_USE',
-      '发布版本仍在引用此素材',
     );
     check(
       !(
@@ -78,7 +71,6 @@ export async function assetRoutes(app: FastifyInstance) {
           `%${a}%`,
         ])
       ).rowCount,
-      409,
       'ASSET_IN_USE',
       '草稿仍在引用此素材',
     );
@@ -86,7 +78,7 @@ export async function assetRoutes(app: FastifyInstance) {
       a,
       uid(r),
     ]);
-    check(deleted.rowCount, 404, 'NOT_FOUND', '素材不存在');
+    check(deleted.rowCount, 'NOT_FOUND');
     await unlink(path.join(config.assets, a));
     return { deleted: true };
   });

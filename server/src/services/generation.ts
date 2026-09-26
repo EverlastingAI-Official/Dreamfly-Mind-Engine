@@ -1,4 +1,5 @@
-import { check, HttpError } from '../errors.js';
+import { check, publicFailure } from '../errors.js';
+import type { ApiFailure } from '../../../packages/api/index.js';
 import type { ModelEvent, Usage } from '../types.js';
 export async function generateReply(
   events: AsyncIterable<ModelEvent>,
@@ -11,12 +12,12 @@ export async function generateReply(
     usage: Usage | null = null,
     lastSave = Date.now();
   let status: 'completed' | 'failed' | 'cancelled' = 'completed';
-  let message: string | undefined;
+  let failure: ApiFailure | undefined;
   try {
     for await (const event of events) {
       if (event.delta) {
         content += event.delta;
-        check(content.length <= 200000, 502, 'OUTPUT_TOO_LARGE', '模型输出过大');
+        check(content.length <= 200000, 'OUTPUT_TOO_LARGE');
         delta(event.delta);
       }
       if (event.usage) {
@@ -33,8 +34,8 @@ export async function generateReply(
     status = signal.aborted ? 'cancelled' : 'failed';
     if (status === 'failed') {
       reportError(error);
-      message = error instanceof HttpError ? error.message : '模型连接中断，请检查配置或稍后重试';
+      failure = publicFailure(error, 'MODEL_CONNECTION_FAILED');
     }
   }
-  return { content, usage, status, message };
+  return { content, usage, status, error: failure };
 }

@@ -1,9 +1,12 @@
+import { errorInfo, isErrorCode } from '../../packages/api/errors.js';
+
 export class ApiError extends Error {
-  constructor(message, code, details, status) {
+  constructor(message, code, details, status, requestId) {
     super(message);
     this.code = code;
     this.details = details;
     this.status = status;
+    this.requestId = requestId;
   }
 }
 
@@ -20,29 +23,62 @@ export function createClient({
     const multipart = options.body instanceof FormData;
     if (options.body !== undefined && !multipart) headers.set('Content-Type', 'application/json');
     if (csrf) headers.set('X-CSRF-Token', csrf);
-    const result = await request(`${base}${path}`, {
-      ...options,
-      credentials: 'same-origin',
-      headers,
-      body: options.body === undefined || multipart ? options.body : JSON.stringify(options.body),
-    });
+    let result;
+    try {
+      result = await request(`${base}${path}`, {
+        ...options,
+        credentials: 'same-origin',
+        headers,
+        body: options.body === undefined || multipart ? options.body : JSON.stringify(options.body),
+      });
+    } catch (error) {
+      if (error.name === 'AbortError') throw error;
+      throw new ApiError(errorInfo('NETWORK_ERROR').zh, 'NETWORK_ERROR');
+    }
     if (!result.ok) {
       if (result.status === 401 && session().csrf === csrf) clearSession();
-      const payload = result.headers.get('content-type')?.includes('json')
-        ? await result.json()
-        : null;
+      let payload;
+      try {
+        payload = await result.json();
+      } catch {
+        /* Proxies may return HTML or malformed JSON. */
+      }
+      const code = isErrorCode(payload?.error?.code) ? payload.error.code : 'HTTP_ERROR';
       throw new ApiError(
-        payload?.error?.message || '请求失败，请稍后重试',
-        payload?.error?.code || 'HTTP_ERROR',
+        payload?.error?.message || errorInfo(code).zh,
+        code,
         payload?.error?.details,
         result.status,
+        payload?.request_id,
       );
     }
     return result;
   }
   async function api(path, { download, ...options } = {}) {
     const result = await response(path, options);
-    return download ? result.blob() : (await result.json()).data;
+    return download ? result.blob() : readData(result);
+  }
+  async function readData(result) {
+    let payload;
+    try {
+      payload = await result.json();
+    } catch {
+      throw new ApiError(
+        errorInfo('INVALID_RESPONSE').zh,
+        'INVALID_RESPONSE',
+        undefined,
+        result.status,
+      );
+    }
+    if (!payload || !Object.hasOwn(payload, 'data'))
+      throw new ApiError(
+        errorInfo('INVALID_RESPONSE').zh,
+        'INVALID_RESPONSE',
+        undefined,
+        result.status,
+        payload?.request_id,
+      );
+    return payload.data;
   }
   async function sendMessage(conversation, content, onEvent, signal) {
     const result = await response(`/conversations/${conversation}/messages`, {
@@ -50,8 +86,7 @@ export function createClient({
       signal,
       body: { content, client_request_id: crypto.randomUUID() },
     });
-    if (!result.headers.get('content-type')?.includes('text/event-stream'))
-      return (await result.json()).data;
+    if (!result.headers.get('content-type')?.includes('text/event-stream')) return readData(result);
     const reader = result.body.getReader();
     const decoder = new TextDecoder();
     let buffer = '';
@@ -73,7 +108,13 @@ export function createClient({
             .map((line) => line.slice(5).trimStart())
             .join('\n');
           if (!event || !data) continue;
-          onEvent(event, JSON.parse(data));
+          let payload;
+          try {
+            payload = JSON.parse(data);
+          } catch {
+            throw new ApiError(errorInfo('INVALID_RESPONSE').zh, 'INVALID_RESPONSE');
+          }
+          onEvent(event, payload);
           if (['message.completed', 'message.failed', 'message.cancelled'].includes(event)) return;
         }
       }

@@ -1,0 +1,67 @@
+import type * as D from './dto.js';
+import type { RequestBodies as B } from './requests.js';
+
+type Endpoint<Response, Body = never> = { response: Response; body: Body };
+export interface ApiRoutes {
+  'GET /health': Endpoint<{ status: 'ok' }>;
+  'GET /auth/me': Endpoint<D.SessionDto>;
+  'POST /auth/email-codes': Endpoint<D.EmailCodeResult, B['emailCode']>;
+  'POST /auth/register': Endpoint<D.MessageResult, B['register']>;
+  'POST /auth/login': Endpoint<D.SessionDto, B['login']>;
+  'POST /auth/reset-password': Endpoint<D.MessageResult, B['resetPassword']>;
+  'POST /auth/change-password': Endpoint<D.MessageResult, B['changePassword']>;
+  'POST /auth/logout': Endpoint<D.MessageResult>;
+  'POST /auth/logout-all': Endpoint<D.MessageResult>;
+  'GET /model-providers': Endpoint<D.ModelProviderDto[]>;
+  'POST /model-providers/:id/models': Endpoint<D.ModelOptionDto[], B['discoverModels']>;
+  'GET /model-profiles': Endpoint<D.ModelProfilesDto>;
+  'POST /model-profiles': Endpoint<D.ModelProfileDto, B['modelProfile']>;
+  'PATCH /model-profiles/:id': Endpoint<D.ModelProfileDto, B['modelProfileUpdate']>;
+  'DELETE /model-profiles/:id': Endpoint<D.DeletedResult>;
+  'POST /model-profiles/:id/test': Endpoint<D.ModelTestResult>;
+  'POST /model-profiles/:id/models': Endpoint<D.ModelOptionDto[]>;
+  'PUT /users/me/default-model-profile': Endpoint<B['defaultProfile'], B['defaultProfile']>;
+  'GET /skills': Endpoint<D.PageDto<D.SkillSummaryDto>>;
+  'GET /skills/:id/public': Endpoint<D.PublicSkillDto>;
+  'GET /skills/:id': Endpoint<D.SkillDetailDto>;
+  'POST /skills': Endpoint<D.SkillWriteResult, B['createSkill']>;
+  'PATCH /skills/:id': Endpoint<D.SkillWriteResult, B['updateSkill']>;
+  'POST /skills/:id/submit': Endpoint<D.SkillWriteResult, B['submitSkill']>;
+  'POST /skills/:id/publish': Endpoint<D.SkillWriteResult, B['publishSkill']>;
+  'POST /skills/:id/versions': Endpoint<D.IdResult>;
+  'POST /skills/:id/unpublish': Endpoint<{ unpublished: boolean }>;
+  'PUT /skills/:id/reactions/:kind': Endpoint<D.ReactionDto, B['reaction']>;
+  'POST /skills/validate': Endpoint<D.ImportedSkillDto, { content: unknown } | FormData>;
+  'POST /skills/import': Endpoint<D.ImportedSkillDto, FormData>;
+  'GET /skills/:id/export': Endpoint<Blob>;
+  'POST /assets': Endpoint<D.UploadedAssetDto, FormData>;
+  'GET /assets': Endpoint<D.AssetDto[]>;
+  'GET /assets/:id': Endpoint<Blob>;
+  'DELETE /assets/:id': Endpoint<D.DeletedResult>;
+  'POST /mindcopies/:skill_id/sessions': Endpoint<D.IdResult, B['createConversation']>;
+  'GET /conversations': Endpoint<D.ConversationDto[]>;
+  'GET /conversations/:id': Endpoint<D.ConversationDto>;
+  'GET /conversations/:id/messages': Endpoint<D.ConversationMessageDto[]>;
+  'PATCH /conversations/:id': Endpoint<D.UpdatedResult, B['renameConversation']>;
+  'DELETE /conversations/:id': Endpoint<D.DeletedResult>;
+  'PUT /conversations/:id/model-profile': Endpoint<D.UpdatedResult, B['conversationModel']>;
+  'POST /conversations/:id/messages': Endpoint<D.ExistingMessageDto, B['sendMessage']>;
+  'POST /conversations/:id/messages/:message_id/cancel': Endpoint<{ cancelled: boolean }>;
+  'GET /github/status': Endpoint<D.GithubStatusDto>;
+  'GET /github/batches': Endpoint<D.GithubBatchDto[]>;
+  'GET /admin/github/batches': Endpoint<D.GithubBatchDto[]>;
+  'GET /sync-jobs': Endpoint<D.SyncJobSummaryDto[]>;
+  'GET /admin/sync-jobs': Endpoint<D.SyncJobSummaryDto[]>;
+  'GET /sync-jobs/:id': Endpoint<D.SyncJobDto>;
+  'POST /sync-jobs/:id/retry': Endpoint<{ queued: boolean }>;
+  'POST /admin/sync-jobs/:id/retry': Endpoint<{ queued: boolean }>;
+  'POST /admin/github/check': Endpoint<D.MessageResult & { reachable: boolean }>;
+  'GET /admin/users': Endpoint<D.AdminUserDto[]>;
+  'POST /admin/skills/:id/unpublish': Endpoint<{ unpublished: boolean }>;
+  'PATCH /admin/users/:id/status': Endpoint<B['userStatus'], B['userStatus']>;
+}
+/** Fastify routes and browser calls use the same body/reply types. */
+export type ApiRoute<K extends keyof ApiRoutes> = {
+  Body: ApiRoutes[K]['body'];
+  Reply: ApiRoutes[K]['response'];
+};

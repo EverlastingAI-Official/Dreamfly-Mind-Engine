@@ -4,10 +4,11 @@ import { digest, equal } from './crypto.js';
 import { pool } from './db.js';
 import { check } from './errors.js';
 import { allowedOrigins } from './origins.js';
+import type { UserDto } from '../../packages/api/index.js';
 
 declare module 'fastify' {
   interface FastifyRequest {
-    user?: { id: string; email: string; display_name: string; role: string };
+    user?: UserDto;
     session?: { csrf: string; session_digest: string };
   }
   interface FastifyContextConfig {
@@ -16,12 +17,12 @@ declare module 'fastify' {
   }
 }
 export const uid = (r: FastifyRequest) => {
-  check(r.user, 401, 'LOGIN_REQUIRED', '请先登录');
+  check(r.user, 'LOGIN_REQUIRED');
   return r.user.id;
 };
 export function admin(r: FastifyRequest) {
   uid(r);
-  check(r.user!.role === 'admin', 403, 'FORBIDDEN', '需要管理员权限');
+  check(r.user!.role === 'admin', 'FORBIDDEN');
 }
 export async function rate(key: string, max: number, seconds: number) {
   const { rows } = await pool.query(
@@ -30,7 +31,7 @@ export async function rate(key: string, max: number, seconds: number) {
     expires_at=CASE WHEN rate_limits.expires_at<now() THEN excluded.expires_at ELSE rate_limits.expires_at END RETURNING count`,
     [key, seconds],
   );
-  check(rows[0].count <= max, 429, 'RATE_LIMIT', '请求过于频繁，请稍后再试');
+  check(rows[0].count <= max, 'RATE_LIMIT');
 }
 export async function auth(app: FastifyInstance) {
   const origins = allowedOrigins(config.origin, config.production);
@@ -53,13 +54,11 @@ export async function auth(app: FastifyInstance) {
     }
     if (!r.routeOptions.config.public && !r.routeOptions.config.webhook) uid(r);
     if (!['GET', 'HEAD', 'OPTIONS'].includes(r.method) && !r.routeOptions.config.webhook) {
-      check(origins.has(r.headers.origin || ''), 403, 'ORIGIN_REJECTED', '请求来源不被允许');
+      check(origins.has(r.headers.origin || ''), 'ORIGIN_REJECTED');
       if (!r.routeOptions.config.public)
         check(
           r.session && equal(String(r.headers['x-csrf-token'] || ''), r.session.csrf),
-          403,
           'CSRF_REJECTED',
-          '会话校验失败，请刷新重试',
         );
     }
   });

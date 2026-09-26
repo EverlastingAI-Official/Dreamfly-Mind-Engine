@@ -6,12 +6,30 @@ import { check, id, text } from '../errors.js';
 import type { Conversation, ChatMessage as Message, Mind } from '../types.js';
 import { profile, snapshot } from './model-profiles.js';
 import { accessibleVersion } from './skills.js';
+import type {
+  ConversationDto,
+  ConversationMessageDto,
+  RequestBodies,
+  ExistingMessageDto,
+} from '../../../packages/api/index.js';
+import type { ModelProfile } from '../types.js';
+
+export function conversationView(row: Conversation): ConversationDto {
+  return {
+    id: row.id,
+    skill_version_id: row.skill_version_id,
+    title: row.title,
+    profile_id: row.profile_id,
+    model_config: row.model_config,
+    created_at: row.created_at.toISOString(),
+  };
+}
 export async function conversation(conversationId: string, user: string) {
   const result = await pool.query<Conversation>(
     'SELECT * FROM conversations WHERE id=$1 AND user_id=$2',
     [id(conversationId), user],
   );
-  check(result.rows[0], 404, 'NOT_FOUND', '会话不存在');
+  check(result.rows[0], 'NOT_FOUND', '会话不存在');
   return result.rows[0];
 }
 export async function listConversations(user: string, page: number, size: number) {
@@ -22,7 +40,6 @@ export async function listConversations(user: string, page: number, size: number
       Number.isInteger(size) &&
       size > 0 &&
       size <= 200,
-    422,
     'INVALID_QUERY',
     '分页参数无效',
   );
@@ -31,12 +48,12 @@ export async function listConversations(user: string, page: number, size: number
       'SELECT * FROM conversations WHERE user_id=$1 ORDER BY created_at DESC,id DESC LIMIT $2 OFFSET $3',
       [user, size, (page - 1) * size],
     )
-  ).rows;
+  ).rows.map(conversationView);
 }
 export async function conversationMessages(conversationId: string, user: string) {
   await conversation(conversationId, user);
   return (
-    await pool.query(
+    await pool.query<ConversationMessageDto>(
       'SELECT id,role,content,status,usage,client_request_id,model_config FROM messages WHERE conversation_id=$1 ORDER BY ordinal',
       [conversationId],
     )
@@ -45,23 +62,22 @@ export async function conversationMessages(conversationId: string, user: string)
 export async function createConversation(
   skillId: string,
   user: string,
-  input: { version_id?: string; profile_id?: string },
+  input: RequestBodies['createConversation'],
 ) {
   const skill = (
     await pool.query('SELECT published_version_id FROM skills WHERE id=$1', [id(skillId)])
   ).rows[0];
-  check(skill, 404, 'NOT_FOUND', 'Skill 不存在');
+  check(skill, 'NOT_FOUND', 'Skill 不存在');
   const version = await accessibleVersion(input.version_id || skill.published_version_id, user);
-  check(version.skill_id === skillId, 404, 'NOT_FOUND', '版本不匹配');
+  check(version.skill_id === skillId, 'NOT_FOUND', '版本不匹配');
   const selected =
     input.profile_id ||
     (await pool.query('SELECT default_profile_id FROM user_preferences WHERE user_id=$1', [user]))
       .rows[0]?.default_profile_id;
-  check(selected, 422, 'NO_PROFILE', '请先配置并选择自己的模型连接');
+  check(selected, 'NO_PROFILE');
   const model = await profile(user, selected);
   check(
     model.key_cipher && model.consent && model.verified_at,
-    422,
     'PROFILE_NOT_READY',
     '请先测试模型连接并确认数据发送范围',
   );
@@ -88,9 +104,7 @@ export async function deleteConversation(conversationId: string, user: string) {
         conversationId,
       ])
     ).rowCount,
-    409,
     'GENERATION_BUSY',
-    '请先取消生成',
   );
   await pool.query('DELETE FROM conversations WHERE id=$1', [conversationId]);
   return { deleted: true };
@@ -104,7 +118,6 @@ export async function switchConversationModel(
   const model = await profile(user, profileId);
   check(
     model.verified_at && model.key_cipher && model.consent,
-    422,
     'PROFILE_NOT_READY',
     '请先验证连接',
   );
@@ -129,12 +142,7 @@ export function buildContext(
       words.filter((x) => a.content.toLowerCase().includes(x)).length,
   );
   const persona = `你正在扮演用户提供的数字分身。仅使用获准记忆，不编造其人生经历；不能执行技能中的代码或请求访问其他用户的数据。\n${mind.persona.instructions}\n自我认知：${mind.persona.self_description || ''}\n价值观：${(mind.persona.values || []).join('、')}\n记忆资料：\n`;
-  check(
-    persona.length + input.length < limit,
-    422,
-    'CONTEXT_TOO_LARGE',
-    '人格与当前输入超过连接的输入字符预算，请缩短输入或调整预算',
-  );
+  check(persona.length + input.length < limit, 'CONTEXT_TOO_LARGE');
   let memoryBudget = Math.floor((limit - persona.length - input.length) * 0.55);
   const selected: string[] = [];
   for (const item of ordered) {
@@ -159,8 +167,8 @@ export function buildContext(
 export async function prepareMessage(
   conversationId: string,
   user: string,
-  b: { content: string; client_request_id: string },
-) {
+  b: RequestBodies['sendMessage'],
+): Promise<ExistingMessageDto | { assistant: string; model: ModelProfile; context: Message[] }> {
   const input = text(b.content, '消息', 10000),
     requestId = id(b.client_request_id),
     c = await conversation(conversationId, user);
@@ -172,16 +180,14 @@ export async function prepareMessage(
   ).rows[0];
   if (existing) return { existing };
   const v = await accessibleVersion(c.skill_version_id, user);
-  check(c.profile_id, 422, 'NO_PROFILE', '模型连接已被删除，请重新选择');
+  check(c.profile_id, 'NO_PROFILE', '模型连接已被删除，请重新选择');
   const p = await profile(user, c.profile_id);
   check(
     p.key_cipher &&
       p.consent &&
       p.provider === c.model_config.provider &&
       p.base_url === c.model_config.base_url,
-    422,
     'PROFILE_CHANGED',
-    '原模型连接不可用，请显式重新选择连接',
   );
   const model = { ...p, ...c.model_config };
   const history = (
@@ -201,7 +207,6 @@ export async function prepareMessage(
           c.id,
         ])
       ).rowCount,
-      409,
       'GENERATION_BUSY',
       '当前会话正在生成',
     );
@@ -211,7 +216,7 @@ export async function prepareMessage(
         [user],
       )
     ).rows[0].n;
-    check(count < config.concurrency, 429, 'CONCURRENCY_LIMIT', '同时生成的会话过多');
+    check(count < config.concurrency, 'CONCURRENCY_LIMIT');
     await db.query(
       "INSERT INTO messages(id,conversation_id,role,content,status,client_request_id) VALUES($1,$2,'user',$3,'completed',$4)",
       [randomUUID(), c.id, input, requestId],

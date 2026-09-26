@@ -157,14 +157,26 @@ async function submitAuth() {
       throw new Error(tr('两次输入的密码不一致', 'Passwords do not match'));
   }
   if (view.value === 'login') {
-    const state = await api('/auth/login', { method: 'POST', body: value });
+    const state = await api('/auth/login', {
+      method: 'POST',
+      body: { email: value.email, password: value.password },
+    });
     value.password = '';
     setSession(state);
     await navigateUrl(safeReturnTo(props.query.returnTo, paths.mine), true);
   } else {
+    const verification = {
+      email: value.email,
+      password: value.password,
+      code: value.code,
+      challenge_id: value.challenge_id,
+    };
     await api(view.value === 'register' ? '/auth/register' : '/auth/reset-password', {
       method: 'POST',
-      body: value,
+      body:
+        view.value === 'register'
+          ? { ...verification, display_name: value.display_name }
+          : verification,
     });
     value.password = '';
     value.confirm = '';

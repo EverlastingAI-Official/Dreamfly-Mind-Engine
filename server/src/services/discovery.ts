@@ -1,9 +1,5 @@
 import type { Mind, Publication } from '../types.js';
-interface ReactionState {
-  like_count: number;
-  liked: boolean;
-  favorited: boolean;
-}
+import type { ReactionDto as ReactionState, PublicSkillDto } from '../../../packages/api/index.js';
 interface PublicSkillRow extends ReactionState {
   id: string;
   slug: string;
@@ -31,7 +27,7 @@ export async function reactionState(skill: string, user: string | null, db: DB =
   ).rows[0];
 }
 
-export async function publicSkill(skill: string, user: string | null) {
+export async function publicSkill(skill: string, user: string | null): Promise<PublicSkillDto> {
   const row = (
     await pool.query<PublicSkillRow>(
       `SELECT s.id,s.slug,s.owner_id,s.published_version_id,u.display_name AS author,
@@ -41,7 +37,7 @@ export async function publicSkill(skill: string, user: string | null) {
       [user, skill],
     )
   ).rows[0];
-  check(row, 404, 'NOT_FOUND', 'Skill 不存在或已下架');
+  check(row, 'NOT_FOUND', 'Skill 不存在或已下架');
   const content = publicMind(row.content, row.publication);
   // Listing permission does not grant access to the full persona or memories.
   const preview =
@@ -55,7 +51,7 @@ export async function publicSkill(skill: string, user: string | null) {
     author: row.author,
     language: content.language,
     version: row.version,
-    published_at: row.published_at,
+    published_at: row.published_at.toISOString(),
     published_version_id: row.published_version_id,
     publication: { chat: !!row.publication.chat, download: !!row.publication.download },
     memory_count: content.memory.fragments.length,

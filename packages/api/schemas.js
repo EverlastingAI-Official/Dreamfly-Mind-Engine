@@ -1,5 +1,5 @@
 const string = { type: 'string' };
-const object = (properties: Record<string, unknown>, required: string[] = []) => ({
+const object = (properties, required = []) => ({
   type: 'object',
   properties,
   required,
@@ -21,16 +21,12 @@ const profile = object(
       temperature: { type: 'number' },
       context_chars: { type: 'integer' },
     }),
-    id: string,
-    verified_at: { anyOf: [string, { type: 'null' }] },
-    api_key_configured: { type: 'boolean' },
   },
   ['name', 'provider', 'model'],
 );
 const authFields = {
   email: string,
   password: string,
-  confirm: string,
   display_name: string,
   code: string,
   challenge_id: string,
@@ -43,15 +39,27 @@ const skillFields = {
 };
 export const bodies = {
   createSkill: object(skillFields, ['content']),
-  updateSkill: object(skillFields, ['revision']),
+  updateSkill: object(
+    {
+      revision: skillFields.revision,
+      content: skillFields.content,
+      publication: skillFields.publication,
+    },
+    ['revision'],
+  ),
   reaction: object({ active: { type: 'boolean' } }, ['active']),
   emailCode: object({ email: string, purpose: { enum: ['register', 'reset_password'] } }, [
     'email',
     'purpose',
   ]),
   register: object(authFields, ['email', 'password', 'display_name', 'code', 'challenge_id']),
-  login: object(authFields, ['email', 'password']),
-  resetPassword: object(authFields, ['email', 'password', 'code', 'challenge_id']),
+  login: object({ email: string, password: string }, ['email', 'password']),
+  resetPassword: object({ email: string, password: string, code: string, challenge_id: string }, [
+    'email',
+    'password',
+    'code',
+    'challenge_id',
+  ]),
   changePassword: object({ old_password: string, password: string }, ['old_password', 'password']),
   modelProfile: profile,
   modelProfileUpdate: profile,

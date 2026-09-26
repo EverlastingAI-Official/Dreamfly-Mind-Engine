@@ -7,7 +7,7 @@ import { errorDiagnostic } from '../src/logging.js';
 test('failed generation preserves partial text and the original explanation in its single outcome', async () => {
   async function* stream() {
     yield { delta: 'partial text' };
-    throw new HttpError(502, 'UPSTREAM_429', '厂商限流，请稍后重试');
+    throw new HttpError('UPSTREAM_ERROR', '厂商限流，请稍后重试');
   }
   const deltas: string[] = [],
     errors: unknown[] = [];
@@ -21,7 +21,8 @@ test('failed generation preserves partial text and the original explanation in i
   assert.deepEqual(deltas, ['partial text']);
   assert.equal(result.status, 'failed');
   assert.equal(result.content, 'partial text');
-  assert.equal(result.message, '厂商限流，请稍后重试');
+  assert.equal(result.error?.message, '厂商限流，请稍后重试');
+  assert.equal(result.error?.code, 'UPSTREAM_ERROR');
   assert.equal(errors.length, 1);
 });
 test('cancelled streams keep partial content without reporting a provider failure', async () => {

@@ -18,6 +18,7 @@ const unauthorized = () =>
   new Response(
     JSON.stringify({
       error: { code: 'LOGIN_REQUIRED', message: '请先登录', details: { expired: true } },
+      request_id: 'request-123',
     }),
     {
       status: 401,
@@ -33,6 +34,7 @@ test('JSON and streaming requests clear expired sessions and preserve structured
         code: 'LOGIN_REQUIRED',
         status: 401,
         details: { expired: true },
+        requestId: 'request-123',
       },
     );
     assert.equal(transport.state.user, null);
@@ -58,7 +60,7 @@ test('stream requires a terminal event, handles split UTF-8, and delivers failur
   const start = 'event: message.start\ndata: {"id":"reply"}\n\n';
   const delta = 'event: message.delta\ndata: {"text":"你好🦋"}\n\n';
   const failure =
-    'event: message.failed\ndata: {"status":"failed","message":"specific failure"}\n\n';
+    'event: message.failed\ndata: {"status":"failed","error":{"code":"UPSTREAM_ERROR","message":"specific failure"},"request_id":"stream-123"}\n\n';
   function streaming(payload) {
     return client(
       async () =>
@@ -83,5 +85,36 @@ test('stream requires a terminal event, handles split UTF-8, and delivers failur
   );
   assert.equal(received[1].data.text, '你好🦋');
   assert.equal(received.filter((item) => item.event === 'message.failed').length, 1);
-  assert.equal(received.at(-1).data.message, 'specific failure');
+  assert.equal(received.at(-1).data.error.message, 'specific failure');
+  assert.equal(received.at(-1).data.error.code, 'UPSTREAM_ERROR');
+  assert.equal(received.at(-1).data.request_id, 'stream-123');
+});
+
+test('network, proxy and malformed success responses preserve the unified error API', async () => {
+  await assert.rejects(
+    () =>
+      client(async () => {
+        throw new TypeError('fetch failed');
+      }).api('/skills'),
+    { code: 'NETWORK_ERROR' },
+  );
+  await assert.rejects(
+    () =>
+      client(async () => new Response('<html>proxy error</html>', { status: 502 })).api('/skills'),
+    { code: 'HTTP_ERROR', status: 502 },
+  );
+  await assert.rejects(() => client(async () => new Response('broken')).api('/skills'), {
+    code: 'INVALID_RESPONSE',
+  });
+  await assert.rejects(() => client(async () => new Response('{}')).api('/skills'), {
+    code: 'INVALID_RESPONSE',
+  });
+  const aborted = new DOMException('aborted', 'AbortError');
+  await assert.rejects(
+    () =>
+      client(async () => {
+        throw aborted;
+      }).api('/skills'),
+    (error) => error === aborted,
+  );
 });

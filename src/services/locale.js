@@ -1,3 +1,4 @@
+import { errorInfo, isErrorCode } from '../../packages/api/errors.js';
 import { ref, watch } from 'vue';
 
 const saved = uni.getStorageSync('dreamfly-language');
@@ -13,24 +14,8 @@ watch(
 );
 
 export function publicError(error) {
-  if (locale.value === 'zh') return error.message;
-  return (
-    {
-      LOGIN_REQUIRED: 'Please sign in to continue.',
-      NOT_FOUND: 'This Skill is unavailable, has changed, or is no longer public.',
-      INVALID_QUERY: 'Please check your search filters.',
-      INTERNAL_ERROR: 'The service is temporarily unavailable. Please try again.',
-      MODEL_NETWORK_BLOCKED:
-        'The backend cannot access the model service. Restart it with network access enabled.',
-      ORIGIN_REJECTED: 'This request could not be verified. Please reload the page.',
-      CSRF_REJECTED: 'Your session has changed. Please sign in again.',
-      INVALID_LOGIN: 'The email or password is incorrect, or the account is unavailable.',
-      INVALID_CODE: 'The verification code is invalid, expired or already used.',
-      INVALID_EMAIL: 'Please enter a valid email address.',
-      INVALID_PASSWORD: 'Use 8–128 characters including letters and digits.',
-      RATE_LIMIT: 'Too many requests. Please try again later.',
-    }[error.code] || 'The request failed. Please try again.'
-  );
+  const info = errorInfo(isErrorCode(error.code) ? error.code : 'HTTP_ERROR');
+  return locale.value === 'en' ? info.en : error.message || info.zh;
 }
 
 export async function copyText(value) {

@@ -1,0 +1,422 @@
+{
+  "ASSET_IN_USE": {
+    "status": 409,
+    "zh": "发布版本仍在引用此素材",
+    "en": "A draft or published version still references this asset."
+  },
+  "ASSET_KIND_MISMATCH": {
+    "status": 422,
+    "zh": "素材类型与上传入口不符",
+    "en": "Choose a file matching the requested image or audio type."
+  },
+  "ASSET_TOO_LARGE": {
+    "status": 413,
+    "zh": "素材超过 10 MB，请移除后重新上传",
+    "en": "The asset exceeds the 10 MB limit."
+  },
+  "BLOCKED": {
+    "status": 403,
+    "zh": "此 Skill 已被管理下架",
+    "en": "This Skill was removed by an administrator."
+  },
+  "COMPLIANCE_CONFIRMATION_REQUIRED": {
+    "status": 422,
+    "zh": "请确认拥有内容的使用与发布授权，并同意当前公开范围",
+    "en": "Confirm your rights to publish the content and the selected public scope."
+  },
+  "CONCURRENCY_LIMIT": {
+    "status": 429,
+    "zh": "同时生成的会话过多",
+    "en": "Too many conversations are generating replies."
+  },
+  "CONTEXT_TOO_LARGE": {
+    "status": 422,
+    "zh": "人格与当前输入超过连接的输入字符预算，请缩短输入或调整预算",
+    "en": "The persona and message exceed the input budget."
+  },
+  "CSRF_REJECTED": {
+    "status": 403,
+    "zh": "会话校验失败，请刷新重试",
+    "en": "Your session has changed. Please sign in again."
+  },
+  "DRAFT_CHANGED": {
+    "status": 409,
+    "zh": "内容已在其他页面更新，请刷新后再提交",
+    "en": "This draft has changed. Reload it before saving."
+  },
+  "DUPLICATE_MEMORY": {
+    "status": 422,
+    "zh": "记忆 ID 不可重复",
+    "en": "Memory IDs must be unique."
+  },
+  "FILE_TOO_LARGE": {
+    "status": 413,
+    "zh": "单文件超过上传限制",
+    "en": "The uploaded file exceeds the size limit."
+  },
+  "FORBIDDEN": {
+    "status": 403,
+    "zh": "需要管理员权限",
+    "en": "You do not have permission to perform this action."
+  },
+  "GENERATION_BUSY": {
+    "status": 409,
+    "zh": "请先取消生成",
+    "en": "Cancel the current generation first."
+  },
+  "GITHUB_BRANCH_NOT_FOUND": {
+    "status": 422,
+    "zh": "目标分支不存在，请联系管理员",
+    "en": "The target branch does not exist. Contact an administrator."
+  },
+  "GITHUB_CHECK_FAILED": {
+    "status": 422,
+    "zh": "无法访问 GitHub 仓库或分支",
+    "en": "The repository or branch is unavailable. Check the token and permissions."
+  },
+  "GITHUB_COMMIT_FAILED": {
+    "status": 502,
+    "zh": "无法创建提交",
+    "en": "GitHub could not create the commit."
+  },
+  "GITHUB_CONFIG_INVALID": {
+    "status": 422,
+    "zh": "平台 GitHub 仓库配置无效，请联系管理员",
+    "en": "The GitHub repository configuration is invalid."
+  },
+  "GITHUB_CONFIG_REQUIRED": {
+    "status": 422,
+    "zh": "平台 GitHub 仓库或凭据未配置，每周同步等待管理员配置；平台内容可正常使用",
+    "en": "GitHub synchronization is waiting for repository credentials. Platform publishing is still available."
+  },
+  "GITHUB_DISABLED": {
+    "status": 422,
+    "zh": "平台 GitHub 同步尚未启用，请联系管理员",
+    "en": "GitHub synchronization is disabled."
+  },
+  "GITHUB_LEGACY_JOB": {
+    "status": 409,
+    "zh": "旧 App 任务不能转投统一仓库，请联系管理员核对原提交",
+    "en": "This legacy job cannot be sent to the current repository."
+  },
+  "GITHUB_PERMISSION_REQUIRED": {
+    "status": 422,
+    "zh": "Owner 令牌没有目标仓库的写入权限",
+    "en": "The token needs write permission for the target repository."
+  },
+  "GITHUB_SCHEDULE_INVALID": {
+    "status": 422,
+    "zh": "每周同步时间配置无效",
+    "en": "The weekly synchronization schedule is invalid."
+  },
+  "GITHUB_TARGET_CHANGED": {
+    "status": 409,
+    "zh": "目标已变更，不能重试旧目标任务",
+    "en": "The repository target changed. This job cannot be retried."
+  },
+  "INCOMPLETE_SKILL": {
+    "status": 422,
+    "zh": "Skill 内容不完整",
+    "en": "Complete the required Skill content before submitting."
+  },
+  "INCOMPLETE_STREAM": {
+    "status": 502,
+    "zh": "模型流未完整结束",
+    "en": "The reply ended early. Please try again."
+  },
+  "INVALID_ASSET_KIND": {
+    "status": 422,
+    "zh": "请选择图片或声音素材",
+    "en": "Choose an image or audio asset."
+  },
+  "INVALID_ASSET_PATH": {
+    "status": 422,
+    "zh": "素材必须引用 assets/ 下的文件",
+    "en": "Assets must reference files under assets/."
+  },
+  "INVALID_BODY": {
+    "status": 422,
+    "zh": "请提供 JSON 对象",
+    "en": "Provide a valid JSON object."
+  },
+  "INVALID_CODE": {
+    "status": 422,
+    "zh": "验证码无效",
+    "en": "The verification code is invalid, expired or already used."
+  },
+  "INVALID_DATE": {
+    "status": 422,
+    "zh": "同步日期无效",
+    "en": "Provide a valid date."
+  },
+  "INVALID_EMAIL": {
+    "status": 422,
+    "zh": "邮箱格式无效",
+    "en": "Please enter a valid email address."
+  },
+  "INVALID_FIELD": {
+    "status": 422,
+    "zh": "字段格式或长度无效",
+    "en": "Check the field format and length."
+  },
+  "INVALID_ID": {
+    "status": 422,
+    "zh": "无效的资源 ID",
+    "en": "The resource ID is invalid."
+  },
+  "INVALID_KEY_ACTION": {
+    "status": 422,
+    "zh": "无效的密钥操作",
+    "en": "Choose keep, replace or clear for the API key."
+  },
+  "INVALID_LOGIN": {
+    "status": 401,
+    "zh": "邮箱或密码错误，或账号不可用",
+    "en": "The email or password is incorrect, or the account is unavailable."
+  },
+  "INVALID_MEDIA": {
+    "status": 422,
+    "zh": "仅支持 PNG、JPEG、WebP、WAV、OGG、MP3 素材",
+    "en": "Use PNG, JPEG, WebP, WAV, OGG or MP3 media."
+  },
+  "INVALID_MODEL_LIST": {
+    "status": 502,
+    "zh": "厂商返回了无法识别的模型列表",
+    "en": "The provider returned an invalid model list."
+  },
+  "INVALID_PAGE": {
+    "status": 422,
+    "zh": "页码无效",
+    "en": "The page number is invalid."
+  },
+  "INVALID_PARAMETERS": {
+    "status": 422,
+    "zh": "超时 10–600 秒，输出上限 16–16384",
+    "en": "Check the model timeout, token limit and other parameters."
+  },
+  "INVALID_PASSWORD": {
+    "status": 422,
+    "zh": "密码须为 8–128 位，且包含字母和数字",
+    "en": "Use 8–128 characters including letters and digits."
+  },
+  "INVALID_PROTOCOL": {
+    "status": 422,
+    "zh": "不支持的协议",
+    "en": "The model protocol is not supported."
+  },
+  "INVALID_PROVIDER": {
+    "status": 422,
+    "zh": "未知厂商",
+    "en": "Choose a supported model provider."
+  },
+  "INVALID_PUBLICATION": {
+    "status": 422,
+    "zh": "发布范围包含不存在的记忆",
+    "en": "The publication scope contains unavailable content."
+  },
+  "INVALID_PURPOSE": {
+    "status": 422,
+    "zh": "验证码用途无效",
+    "en": "Choose registration or password reset."
+  },
+  "INVALID_QUERY": {
+    "status": 422,
+    "zh": "查询选项无效",
+    "en": "Please check your search filters."
+  },
+  "INVALID_SKILL": {
+    "status": 422,
+    "zh": "Skill 格式不正确",
+    "en": "The Skill format is invalid."
+  },
+  "INVALID_SKILL_MD": {
+    "status": 422,
+    "zh": "Markdown 缺少 YAML frontmatter",
+    "en": "SKILL.md must include YAML frontmatter."
+  },
+  "INVALID_STATUS": {
+    "status": 422,
+    "zh": "不能停用自己，状态须为 active 或 disabled",
+    "en": "The requested account or job status is invalid."
+  },
+  "INVALID_STREAM": {
+    "status": 502,
+    "zh": "流事件过大",
+    "en": "The model returned an invalid stream."
+  },
+  "INVALID_ZIP": {
+    "status": 422,
+    "zh": "无法读取 ZIP",
+    "en": "The ZIP file could not be read."
+  },
+  "LOGIN_REQUIRED": {
+    "status": 401,
+    "zh": "请先登录",
+    "en": "Please sign in to continue."
+  },
+  "MISSING_ASSET": {
+    "status": 422,
+    "zh": "素材不存在或不属于当前用户",
+    "en": "An asset is missing or does not belong to this account."
+  },
+  "MODEL_ERROR": {
+    "status": 502,
+    "zh": "模型生成失败",
+    "en": "The model could not generate a reply."
+  },
+  "MODEL_NETWORK_BLOCKED": {
+    "status": 503,
+    "zh": "后端运行环境禁止连接模型服务，请以允许联网的方式重启后端",
+    "en": "The backend cannot access the model service. Check its network permissions."
+  },
+  "NOT_FOUND": {
+    "status": 404,
+    "zh": "素材不存在",
+    "en": "The requested resource is unavailable."
+  },
+  "NOT_RETRYABLE": {
+    "status": 409,
+    "zh": "仅失败任务可以重试",
+    "en": "Only eligible failed jobs can be retried."
+  },
+  "NO_FILE": {
+    "status": 422,
+    "zh": "请选择素材",
+    "en": "Choose a file to upload."
+  },
+  "NO_KEY": {
+    "status": 422,
+    "zh": "请先输入 API Key，再获取模型列表",
+    "en": "Enter an API key first."
+  },
+  "NO_PROFILE": {
+    "status": 422,
+    "zh": "请先配置并选择自己的模型连接",
+    "en": "Choose a model connection first."
+  },
+  "NO_SKILL": {
+    "status": 422,
+    "zh": "未找到 mind.json、.mind 或 SKILL.md",
+    "en": "The package must contain mind.json, .mind or SKILL.md."
+  },
+  "NO_TEXT": {
+    "status": 502,
+    "zh": "未返回文本",
+    "en": "The model did not return text."
+  },
+  "ORIGIN_REJECTED": {
+    "status": 403,
+    "zh": "请求来源不被允许",
+    "en": "This request could not be verified. Please reload the page."
+  },
+  "OUTPUT_TOO_LARGE": {
+    "status": 502,
+    "zh": "模型输出过大",
+    "en": "The model output exceeds the size limit."
+  },
+  "PERSONA_CONFLICT": {
+    "status": 409,
+    "zh": "mind.json 与 SKILL.md 人格不一致，请修改后重新上传",
+    "en": "The personas in mind.json and SKILL.md conflict."
+  },
+  "PROFILE_CHANGED": {
+    "status": 422,
+    "zh": "原模型连接不可用，请显式重新选择连接",
+    "en": "The original model connection changed. Select a connection again."
+  },
+  "PROFILE_NOT_READY": {
+    "status": 422,
+    "zh": "请输入密钥并确认发送文本至该厂商",
+    "en": "Confirm the data scope and test the model connection first."
+  },
+  "RATE_LIMIT": {
+    "status": 429,
+    "zh": "请求过于频繁，请稍后再试",
+    "en": "Too many requests. Please try again later."
+  },
+  "REQUEST_REUSED": {
+    "status": 409,
+    "zh": "同一请求标识不能用于不同内容",
+    "en": "A request ID cannot be reused for different content."
+  },
+  "SLUG_READONLY": {
+    "status": 422,
+    "zh": "包名由系统分配，不能修改",
+    "en": "The package name is assigned by the system and cannot be changed."
+  },
+  "UNSAFE_ENDPOINT": {
+    "status": 422,
+    "zh": "仅支持公开 HTTPS 地址和 443 端口",
+    "en": "Use a public HTTPS endpoint on port 443."
+  },
+  "UNSAFE_ZIP": {
+    "status": 422,
+    "zh": "ZIP 包含不支持的路径/文件或文件过多",
+    "en": "The ZIP contains unsafe paths, unsupported files or too many files."
+  },
+  "UPSTREAM_TOO_LARGE": {
+    "status": 502,
+    "zh": "上游响应过大",
+    "en": "The model response exceeds the size limit."
+  },
+  "ZIP_TOO_LARGE": {
+    "status": 413,
+    "zh": "ZIP 解压内容过大",
+    "en": "The extracted ZIP content exceeds the size limit."
+  },
+  "ALREADY_EXISTS": {
+    "status": 409,
+    "zh": "相同版本、名称或请求已存在",
+    "en": "This version, name or request already exists."
+  },
+  "INTERNAL_ERROR": {
+    "status": 500,
+    "zh": "服务暂时不可用，请检查运行状态",
+    "en": "The service is temporarily unavailable. Please try again."
+  },
+  "INVALID_REQUEST": {
+    "status": 400,
+    "zh": "请求格式无效",
+    "en": "The request format is invalid."
+  },
+  "UNSUPPORTED_MEDIA_TYPE": {
+    "status": 415,
+    "zh": "不支持此请求内容类型",
+    "en": "This request content type is not supported."
+  },
+  "UPSTREAM_ERROR": {
+    "status": 502,
+    "zh": "模型服务请求失败",
+    "en": "The model service rejected the request."
+  },
+  "MODEL_CONNECTION_FAILED": {
+    "status": 502,
+    "zh": "模型连接中断，请检查配置或稍后重试",
+    "en": "The model connection was interrupted. Check the configuration or try again."
+  },
+  "MESSAGE_SAVE_FAILED": {
+    "status": 500,
+    "zh": "回复保存失败，请刷新后检查会话",
+    "en": "The reply could not be saved. Reload the conversation."
+  },
+  "CURRENT_PASSWORD_INCORRECT": {
+    "status": 401,
+    "zh": "当前密码错误",
+    "en": "The current password is incorrect."
+  },
+  "HTTP_ERROR": {
+    "status": 502,
+    "zh": "请求失败，请稍后重试",
+    "en": "The request failed. Please try again."
+  },
+  "NETWORK_ERROR": {
+    "status": 0,
+    "zh": "网络连接失败，请检查网络后重试",
+    "en": "The network request failed. Check your connection."
+  },
+  "INVALID_RESPONSE": {
+    "status": 502,
+    "zh": "服务返回了无效响应，请稍后重试",
+    "en": "The service returned an invalid response."
+  }
+}

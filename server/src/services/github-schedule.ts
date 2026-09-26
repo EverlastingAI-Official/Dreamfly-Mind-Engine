@@ -14,14 +14,12 @@ export function weeklySettings() {
       weekday >= 1 &&
       weekday <= 7 &&
       /^([01]\d|2[0-3]):[0-5]\d$/.test(time),
-    422,
     'GITHUB_SCHEDULE_INVALID',
-    '每周同步时间配置无效',
   );
   try {
     new Intl.DateTimeFormat('en', { timeZone: timezone });
   } catch {
-    check(false, 422, 'GITHUB_SCHEDULE_INVALID', '每周同步时区配置无效');
+    check(false, 'GITHUB_SCHEDULE_INVALID', '每周同步时区配置无效');
   }
   return { timezone, weekday, time };
 }

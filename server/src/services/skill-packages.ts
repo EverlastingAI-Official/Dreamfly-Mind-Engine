@@ -14,7 +14,7 @@ export async function importSkillPackage(
   if (save) {
     // Validate every reference before persisting any asset.
     for (const ref of Object.values(pkg.mind.assets))
-      check(pkg.files.has(pkg.root + ref), 422, 'MISSING_ASSET', '包中缺少 ' + ref);
+      check(pkg.files.has(pkg.root + ref), 'MISSING_ASSET', '包中缺少 ' + ref);
     for (const [key, ref] of Object.entries(pkg.mind.assets)) {
       pkg.mind.assets[key] = (
         await storeAsset(user, ref, pkg.files.get(pkg.root + ref)!)
@@ -31,12 +31,11 @@ export async function exportSkillPackage(
   publicScope: boolean,
 ) {
   const version = await accessibleVersion(id(versionId), user, 'download');
-  check(version.skill_id === id(skillId), 404, 'NOT_FOUND', '版本不属于此 Skill');
+  check(version.skill_id === id(skillId), 'NOT_FOUND', '版本不属于此 Skill');
   if (publicScope) {
     const published = await publicSkill(version.skill_id, user);
     check(
       published.publication.download && published.published_version_id === versionId,
-      404,
       'NOT_FOUND',
       '此发布版本已更新或不可下载',
     );

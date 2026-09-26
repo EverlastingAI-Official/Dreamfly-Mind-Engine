@@ -75,9 +75,7 @@ export async function checkedURL(raw: string, allowProviderProxy = false) {
       !url.password &&
       (!url.port || url.port === '443') &&
       !url.hash,
-    422,
     'UNSAFE_ENDPOINT',
-    '仅支持公开 HTTPS 地址和 443 端口',
   );
   const addresses = await dns.lookup(url.hostname.replace(/^\[|\]$/g, ''), { all: true });
   check(
@@ -86,7 +84,6 @@ export async function checkedURL(raw: string, allowProviderProxy = false) {
         (x) =>
           publicAddress(x.address) || (allowProviderProxy && providerProxyAddress(raw, x.address)),
       ),
-    422,
     'UNSAFE_ENDPOINT',
     '不能访问回环、私有或保留网络',
   );
@@ -110,13 +107,13 @@ export async function upstream(
         res.resume();
         reject(
           new HttpError(
-            502,
-            `UPSTREAM_${res.statusCode}`,
+            'UPSTREAM_ERROR',
             res.statusCode === 401 || res.statusCode === 403
               ? '模型凭据无效或无权限'
               : res.statusCode === 429
                 ? '模型服务限流，请稍后重试'
                 : `模型服务返回 ${res.statusCode}`,
+            { upstream_status: res.statusCode },
           ),
         );
       } else resolve(res);
@@ -126,11 +123,7 @@ export async function upstream(
     req.on('error', (error: NodeJS.ErrnoException) => {
       reject(
         error.code === 'EACCES' || error.code === 'EPERM'
-          ? new HttpError(
-              503,
-              'MODEL_NETWORK_BLOCKED',
-              '后端运行环境禁止连接模型服务，请以允许联网的方式重启后端',
-            )
+          ? new HttpError('MODEL_NETWORK_BLOCKED')
           : error,
       );
     });
@@ -143,7 +136,7 @@ export async function responseJSON<T = unknown>(res: AsyncIterable<Buffer>): Pro
   let size = 0;
   for await (const c of res) {
     size += c.length;
-    check(size < 8 * 1024 * 1024, 502, 'UPSTREAM_TOO_LARGE', '上游响应过大');
+    check(size < 8 * 1024 * 1024, 'UPSTREAM_TOO_LARGE');
     chunks.push(c);
   }
   return JSON.parse(Buffer.concat(chunks).toString('utf8'));
@@ -155,7 +148,7 @@ export async function* sseEvents<T = unknown>(
   let buffer = '';
   for await (const chunk of stream) {
     buffer += decoder.decode(chunk, { stream: true });
-    check(buffer.length < 2 * 1024 * 1024, 502, 'INVALID_STREAM', '流事件过大');
+    check(buffer.length < 2 * 1024 * 1024, 'INVALID_STREAM');
     let match;
     while ((match = /\r?\n\r?\n/.exec(buffer))) {
       const block = buffer.slice(0, match.index);
@@ -169,12 +162,7 @@ export async function* sseEvents<T = unknown>(
     }
   }
   buffer += decoder.decode();
-  check(
-    !buffer.trim() || buffer.trim().startsWith(':'),
-    502,
-    'INCOMPLETE_STREAM',
-    '模型流未完整结束',
-  );
+  check(!buffer.trim() || buffer.trim().startsWith(':'), 'INCOMPLETE_STREAM');
 }
 export type Message = ChatMessage;
 function modelHeaders(protocol: string, key: string): Record<string, string> {
@@ -200,7 +188,7 @@ export async function listModels(
   do {
     const payload = await request(url.href, modelHeaders(p.protocol, key));
     const entries = payload.data || payload.models;
-    check(Array.isArray(entries), 502, 'INVALID_MODEL_LIST', '厂商返回了无法识别的模型列表');
+    check(Array.isArray(entries), 'INVALID_MODEL_LIST');
     for (const entry of entries) {
       if (
         p.protocol === 'gemini-generate-content' &&
@@ -226,7 +214,7 @@ export async function listModels(
         : p.protocol === 'anthropic-messages' && payload.has_more
           ? payload.last_id
           : undefined;
-    check(!cursor || cursor !== next, 502, 'INVALID_MODEL_LIST', '厂商模型列表分页异常');
+    check(!cursor || cursor !== next, 'INVALID_MODEL_LIST', '厂商模型列表分页异常');
     next = cursor;
     if (next)
       url.searchParams.set(
@@ -266,7 +254,7 @@ interface ProviderEvent {
   choices?: { delta?: { content?: string }; finish_reason?: string }[];
 }
 export function requestConfig(p: ModelProfile, messages: Message[], stream = true) {
-  check(p.key_cipher, 422, 'NO_KEY', '请输入 API Key');
+  check(p.key_cipher, 'NO_KEY', '请输入 API Key');
   const key = decrypt(p.key_cipher, p.user_id + ':' + p.id);
   const headers = { 'Content-Type': 'application/json', ...modelHeaders(p.protocol, key) };
   const system = messages
@@ -335,7 +323,7 @@ export async function* streamChat(
   let content = false,
     terminal = false;
   for await (const e of sseEvents<ProviderEvent>(response)) {
-    if (e.error || e.type === 'error') throw new HttpError(502, 'MODEL_ERROR', '模型生成失败');
+    if (e.error || e.type === 'error') throw new HttpError('MODEL_ERROR');
     let delta: string | undefined;
     let usage: Usage | undefined;
     if (p.protocol === 'anthropic-messages') {
@@ -360,5 +348,5 @@ export async function* streamChat(
     }
     if (usage) yield { usage };
   }
-  check(content && terminal, 502, 'INCOMPLETE_STREAM', '模型未返回完整文本结果');
+  check(content && terminal, 'INCOMPLETE_STREAM', '模型未返回完整文本结果');
 }

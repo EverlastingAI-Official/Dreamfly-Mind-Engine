@@ -1,12 +1,13 @@
+import type { ApiRoute } from '../../../packages/api/index.js';
 import type { FastifyInstance } from 'fastify';
 import { uid } from '../auth.js';
 import { pool, transaction } from '../db.js';
-import { body, check, id, params, query } from '../errors.js';
-import { bodies } from './schemas.js';
+import { check, id, params, query } from '../errors.js';
+import { bodies } from '../../../packages/api/schemas.js';
 
 import { publicSkill, reactions, reactionState, visible } from '../services/discovery.js';
 export async function discoveryRoutes(app: FastifyInstance) {
-  app.get('/skills', { config: { public: true } }, async (r) => {
+  app.get<ApiRoute<'GET /skills'>>('/skills', { config: { public: true } }, async (r) => {
     const q = query(r),
       scope = q.scope || 'public',
       collection = q.collection || 'all',
@@ -15,9 +16,7 @@ export async function discoveryRoutes(app: FastifyInstance) {
       ['public', 'mine'].includes(scope) &&
         ['all', 'liked', 'favorites'].includes(collection) &&
         ['newest', 'oldest', 'name', 'likes'].includes(sort),
-      422,
       'INVALID_QUERY',
-      '查询选项无效',
     );
     const mine = scope === 'mine',
       user = mine || collection !== 'all' ? uid(r) : r.user?.id || null;
@@ -30,15 +29,13 @@ export async function discoveryRoutes(app: FastifyInstance) {
         Number.isInteger(size) &&
         size > 0 &&
         size <= 100,
-      422,
       'INVALID_QUERY',
       '分页参数无效',
     );
-    check(!q.language || ['zh', 'en'].includes(q.language), 422, 'INVALID_QUERY', '语言筛选无效');
+    check(!q.language || ['zh', 'en'].includes(q.language), 'INVALID_QUERY', '语言筛选无效');
     for (const key of ['download', 'chat'])
       check(
         q[key] === undefined || ['true', 'false'].includes(q[key]),
-        422,
         'INVALID_QUERY',
         '权限筛选无效',
       );
@@ -92,42 +89,50 @@ export async function discoveryRoutes(app: FastifyInstance) {
     ).rows[0];
     return { ...result, page, page_size: size };
   });
-  app.get('/skills/:id/public', { config: { public: true } }, async (r) =>
-    publicSkill(id(params(r).id), r.user?.id || null),
+  app.get<ApiRoute<'GET /skills/:id/public'>>(
+    '/skills/:id/public',
+    { config: { public: true } },
+    async (r) => publicSkill(id(params(r).id), r.user?.id || null),
   );
-  app.put('/skills/:id/reactions/:kind', { schema: { body: bodies.reaction } }, async (r) => {
-    const user = uid(r),
-      skill = id(params(r).id),
-      kind = params(r).kind,
-      active = body(r).active;
-    check(
-      ['like', 'favorite'].includes(kind) && typeof active === 'boolean',
-      422,
-      'INVALID_QUERY',
-      '反馈类型或状态无效',
-    );
-    return transaction(async (db) => {
-      const row = (
-        await db.query(
-          `SELECT s.id FROM skills s JOIN users u ON u.id=s.owner_id WHERE s.id=$1 AND ${visible} FOR SHARE OF s,u`,
-          [skill],
-        )
-      ).rows[0];
-      check(row || !active, 404, 'NOT_FOUND', 'Skill 不存在或已下架');
-      if (active)
-        await db.query(
-          'INSERT INTO skill_reactions(user_id,skill_id,kind) VALUES($1,$2,$3) ON CONFLICT DO NOTHING',
-          [user, skill, kind],
-        );
-      else
-        await db.query('DELETE FROM skill_reactions WHERE user_id=$1 AND skill_id=$2 AND kind=$3', [
-          user,
-          skill,
-          kind,
-        ]);
-      return (
-        (await reactionState(skill, user, db)) || { like_count: 0, liked: false, favorited: false }
+  app.put<ApiRoute<'PUT /skills/:id/reactions/:kind'>>(
+    '/skills/:id/reactions/:kind',
+    { schema: { body: bodies.reaction } },
+    async (r) => {
+      const user = uid(r),
+        skill = id(params(r).id),
+        kind = params(r).kind,
+        active = r.body.active;
+      check(
+        ['like', 'favorite'].includes(kind) && typeof active === 'boolean',
+        'INVALID_QUERY',
+        '反馈类型或状态无效',
       );
-    });
-  });
+      return transaction(async (db) => {
+        const row = (
+          await db.query(
+            `SELECT s.id FROM skills s JOIN users u ON u.id=s.owner_id WHERE s.id=$1 AND ${visible} FOR SHARE OF s,u`,
+            [skill],
+          )
+        ).rows[0];
+        check(row || !active, 'NOT_FOUND', 'Skill 不存在或已下架');
+        if (active)
+          await db.query(
+            'INSERT INTO skill_reactions(user_id,skill_id,kind) VALUES($1,$2,$3) ON CONFLICT DO NOTHING',
+            [user, skill, kind],
+          );
+        else
+          await db.query(
+            'DELETE FROM skill_reactions WHERE user_id=$1 AND skill_id=$2 AND kind=$3',
+            [user, skill, kind],
+          );
+        return (
+          (await reactionState(skill, user, db)) || {
+            like_count: 0,
+            liked: false,
+            favorited: false,
+          }
+        );
+      });
+    },
+  );
 }

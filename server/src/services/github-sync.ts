@@ -11,7 +11,6 @@ async function authorizeGithub(job: GithubJob) {
     target = job.payload.target;
   check(
     target?.auth_mode === 'owner',
-    422,
     'GITHUB_LEGACY_JOB',
     '旧 App 任务已停止，请管理员核对原仓库；不会自动转投统一仓库',
   );
@@ -19,7 +18,6 @@ async function authorizeGithub(job: GithubJob) {
     target.owner.toLowerCase() === configured.owner.toLowerCase() &&
       target.repo.toLowerCase() === configured.repo.toLowerCase() &&
       target.branch === configured.branch,
-    422,
     'GITHUB_TARGET_CHANGED',
     '平台同步目标已变更，此任务仍保留原目标，请管理员核对',
   );
@@ -46,7 +44,6 @@ export async function syncGithub(
 ): Promise<JobResult> {
   check(
     job.payload.target?.auth_mode === 'owner',
-    422,
     'GITHUB_LEGACY_JOB',
     '旧 App 任务已停止，不会自动转投统一仓库',
   );
@@ -76,7 +73,7 @@ export async function syncGithub(
       const e = requestFailure(error);
       if (e.status !== 404 && e.status !== 409) throw error;
       const branches = (await api.repos.listBranches({ owner, repo: repoName })).data;
-      check(branches.length === 0, 422, 'GITHUB_BRANCH_NOT_FOUND', '目标分支不存在，请联系管理员');
+      check(branches.length === 0, 'GITHUB_BRANCH_NOT_FOUND');
       const initial = await api.repos.createOrUpdateFileContents({
         owner,
         repo: repoName,
@@ -148,7 +145,7 @@ export async function syncGithub(
         }
       }
     }
-    check(commit, 502, 'GITHUB_COMMIT_FAILED', '无法创建提交');
+    check(commit, 'GITHUB_COMMIT_FAILED');
     const skillUrl = `https://github.com/${encodeURIComponent(owner)}/${encodeURIComponent(repoName)}/tree/${encodeURIComponent(commit.sha)}/${dir.split('/').map(encodeURIComponent).join('/')}`;
     return { status: 'succeeded', commit_url: commit.html_url, skill_url: skillUrl };
   } finally {

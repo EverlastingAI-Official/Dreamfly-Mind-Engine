@@ -19,9 +19,7 @@ function publicationFor(content: Mind, choices: PublicationChoices) {
   const pub = publicationSettings(content, choices);
   check(
     pub.memory_ids.every((x) => content.memory.fragments.some((m) => m.id === x)),
-    422,
     'INVALID_PUBLICATION',
-    '发布范围包含不存在的记忆',
   );
   return pub;
 }
@@ -35,16 +33,11 @@ export async function writeSkill(
 ): Promise<SkillWriteResult> {
   if (publish) {
     id(input.request_id);
-    check(
-      input.compliance_confirmed === true,
-      422,
-      'COMPLIANCE_CONFIRMATION_REQUIRED',
-      '请确认拥有内容的使用与发布授权，并同意当前公开范围',
-    );
+    check(input.compliance_confirmed === true, 'COMPLIANCE_CONFIRMATION_REQUIRED');
   }
   return transaction(async (db) => {
     if (create) {
-      check(input.content, 422, 'INVALID_SKILL', '请提供 Skill 内容');
+      check(input.content, 'INVALID_SKILL', '请提供 Skill 内容');
       const name = input.content.name || '我的 MindCopy';
       const initial = {
         ...input.content,
@@ -64,8 +57,8 @@ export async function writeSkill(
         user,
       ])
     ).rows[0];
-    check(skillRow, 404, 'NOT_FOUND', '未找到 Skill');
-    check(skillRow.status !== 'blocked', 403, 'BLOCKED', '此 Skill 已被管理下架');
+    check(skillRow, 'NOT_FOUND', '未找到 Skill');
+    check(skillRow.status !== 'blocked', 'BLOCKED');
     if (publish) {
       const previous = (
         await db.query<{ request: SkillWrite; result: SkillWriteResult }>(
@@ -76,26 +69,17 @@ export async function writeSkill(
       if (previous) {
         check(
           isDeepStrictEqual(previous.request, JSON.parse(JSON.stringify(input))),
-          409,
           'REQUEST_REUSED',
-          '同一请求标识不能用于不同内容',
         );
         return previous.result;
       }
     }
     check(
       Number.isInteger(input.revision) && input.revision === skillRow.revision,
-      409,
       'DRAFT_CHANGED',
-      '内容已在其他页面更新，请刷新后再提交',
     );
     const supplied = input.content || skillRow.draft;
-    check(
-      skillRow.revision === 0 || supplied.slug === skillRow.slug,
-      422,
-      'SLUG_READONLY',
-      '包名由系统分配，不能修改',
-    );
+    check(skillRow.revision === 0 || supplied.slug === skillRow.slug, 'SLUG_READONLY');
     const content = validateSkillSubmission({
       ...supplied,
       slug: skillRow.slug,
@@ -196,7 +180,7 @@ export async function ownedSkill(skillId: string, user: string, db: DB = pool) {
   const s = (
     await db.query<Skill>('SELECT * FROM skills WHERE id=$1 AND owner_id=$2', [id(skillId), user])
   ).rows[0];
-  check(s, 404, 'NOT_FOUND', '未找到 Skill');
+  check(s, 'NOT_FOUND', '未找到 Skill');
   return s;
 }
 export async function accessibleVersion(
@@ -225,14 +209,16 @@ export async function accessibleVersion(
         (s.status === 'published' &&
           s.current_publication[capability] &&
           s.publication[capability])),
-    404,
     'NOT_FOUND',
     '此 Skill 版本不可访问',
   );
   return { ...s, content: s.owner_id === user ? s.content : publicMind(s.content, s.publication) };
 }
 
-export async function skillDetail(skillId: string, user?: string) {
+export async function skillDetail(
+  skillId: string,
+  user?: string,
+): Promise<import('../../../packages/api/index.js').SkillDetailDto> {
   const skill = (
     await pool.query<Skill & { author: string; owner_status: string }>(
       'SELECT s.*,u.display_name AS author,u.status AS owner_status FROM skills s JOIN users u ON u.id=s.owner_id WHERE s.id=$1',
@@ -245,20 +231,33 @@ export async function skillDetail(skillId: string, user?: string) {
         (skill.status === 'published' &&
           skill.publication.listed &&
           skill.owner_status === 'active')),
-    404,
     'NOT_FOUND',
     'Skill 不存在',
   );
   if (skill.owner_id !== user) return publicSkill(skill.id, user || null);
   const versions = (
-    await pool.query(
+    await pool.query<{ id: string; version: string; created_at: Date }>(
       'SELECT id,version,created_at FROM skill_versions WHERE skill_id=$1 ORDER BY created_at DESC',
       [skill.id],
     )
   ).rows;
   return {
-    ...skill,
-    versions,
+    id: skill.id,
+    owner_id: skill.owner_id,
+    slug: skill.slug,
+    name: skill.name,
+    description: skill.description,
+    draft: skill.draft,
+    draft_publication: skill.draft_publication,
+    publication: skill.publication,
+    published_version_id: skill.published_version_id,
+    revision: skill.revision,
+    status: skill.status,
+    author: skill.author,
+    versions: versions.map((version) => ({
+      ...version,
+      created_at: version.created_at.toISOString(),
+    })),
     github_url: await githubPublicationUrl(skill.id, skill.published_version_id),
   };
 }
@@ -281,7 +280,7 @@ export async function createVersion(skillId: string, user: string) {
 }
 export async function unpublishSkill(skillId: string, user: string) {
   const skill = await ownedSkill(skillId, user);
-  check(skill.status !== 'blocked', 403, 'BLOCKED', '已被管理下架');
+  check(skill.status !== 'blocked', 'BLOCKED', '已被管理下架');
   await pool.query(
     "UPDATE skills SET status='draft',revision=revision+1 WHERE id=$1 AND status<>'blocked'",
     [skill.id],

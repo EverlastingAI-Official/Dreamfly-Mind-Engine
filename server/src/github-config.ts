@@ -5,25 +5,15 @@ export function githubTarget() {
   const owner = (process.env.GITHUB_OWNER || '').trim().toLowerCase(),
     repo = (process.env.GITHUB_REPOSITORY || '').trim().toLowerCase();
   const branch = (process.env.GITHUB_BRANCH || 'main').trim();
-  check(config.githubEnabled, 422, 'GITHUB_DISABLED', '平台 GitHub 同步尚未启用，请联系管理员');
+  check(config.githubEnabled, 'GITHUB_DISABLED');
   let token = '';
   try {
     token = secret('GITHUB_OWNER_TOKEN');
   } catch {
     /* Expose a configuration error, never the secret path. */
   }
-  check(
-    owner && repo && branch && token,
-    422,
-    'GITHUB_CONFIG_REQUIRED',
-    '平台 GitHub 仓库或凭据未配置，每周同步等待管理员配置；平台内容可正常使用',
-  );
-  check(
-    /^[A-Za-z0-9-]+$/.test(owner) && /^[A-Za-z0-9_.-]+$/.test(repo),
-    422,
-    'GITHUB_CONFIG_INVALID',
-    '平台 GitHub 仓库配置无效，请联系管理员',
-  );
+  check(owner && repo && branch && token, 'GITHUB_CONFIG_REQUIRED');
+  check(/^[A-Za-z0-9-]+$/.test(owner) && /^[A-Za-z0-9_.-]+$/.test(repo), 'GITHUB_CONFIG_INVALID');
   check(
     !/[~^:?*\[\\\s]/.test(branch) &&
       !branch.includes('..') &&
@@ -31,7 +21,6 @@ export function githubTarget() {
       !branch.startsWith('/') &&
       !branch.endsWith('/') &&
       !branch.endsWith('.'),
-    422,
     'GITHUB_CONFIG_INVALID',
     '平台 GitHub 分支配置无效，请联系管理员',
   );

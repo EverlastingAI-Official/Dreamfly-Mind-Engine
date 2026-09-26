@@ -41,12 +41,25 @@ npm.cmd run setup:local --prefix server
 | 数据目录 | `data/postgres-local/` |
 | 密码文件 | `secrets/postgres_password.txt` |
 
-数据和 secrets 已忽略，不会提交到 Git。服务进程结束后可使用本机安装的 PostgreSQL 工具恢复运行。不要把普通开发账号直接用作生产数据库管理员。
+数据和 secrets 已忽略，不会提交到 Git。不要把普通开发账号直接用作生产数据库管理员。
 
-当前 Windows 沙箱中的 pg_ctl 因“无法创建 restricted token，错误 87”启动失败；直接运行同一安装目录的 postgres.exe 已验证可用：
+要让 `npm run dev` 自动恢复这个已有实例，在 `server/.env` 设置：
+
+```dotenv
+DEV_POSTGRES_DATA_DIR=../data/postgres-local
+DEV_POSTGRES_CTL=C:/msys64/mingw64/bin/pg_ctl.exe
+```
+
+`DEV_POSTGRES_CTL` 使用与数据目录版本匹配的 `pg_ctl` 可执行文件；省略时从 PATH 查找 `pg_ctl`。相对路径基于 `server/`。入口先验证真实数据库连接，仅在本机连接被拒绝且显式配置数据目录时启动实例，然后等待查询成功。数据库日志位于 `data/dev-logs/postgres.log`。不会自动初始化数据、删除锁文件或修改密码；鉴权错误会直接报告。Docker、系统服务和远程数据库保留这两个配置为空，使用各自的启动方式。
+
+Windows 系统 PostgreSQL 服务通常监听 5432；它运行不代表上述项目实例的 55432 已启动。不要仅为消除连接错误而改用另一实例的端口。
+
+启动控制器的输出单独写入 `data/dev-logs/postgres-start.log`，避免 Windows 管道继承阻塞和同一日志文件的打开冲突。Ctrl+C 或重复运行开发入口仅停止应用服务，数据库继续运行。
+
+手动启动同一实例也可使用 `pg_ctl`；它负责后台运行及 Windows 权限处理。不要从管理员终端直接启动 `postgres.exe`，PostgreSQL 会拒绝管理员令牌。受限执行沙箱可能阻止 `pg_ctl` 创建受限令牌（错误 87），此时应在正常本地终端执行：
 
 ```powershell
-& 'C:\msys64\mingw64\bin\postgres.exe' -D D:/gitstore/dreamfly/data/postgres-local -p 55432 -h 127.0.0.1
+& 'C:\msys64\mingw64\bin\pg_ctl.exe' -D D:/gitstore/dreamfly/data/postgres-local -l D:/gitstore/dreamfly/data/dev-logs/postgres.log -o '-p 55432 -h 127.0.0.1' -w start
 ```
 
 这是当前机器的路径；其他机器使用各自安装的 PostgreSQL。初次建库应使用 PostgreSQL 的 initdb/createdb 或数据库管理工具，密码与 `.env` 保持一致。
@@ -61,7 +74,7 @@ npm.cmd run migrate --prefix server
 
 ## 4. 启动应用（推荐一个终端）
 
-PostgreSQL 已启动后，在项目根目录执行：
+按第 3 节配置自动启动本地实例，或先启动外部 PostgreSQL，然后在项目根目录执行：
 
 ```powershell
 cd D:\gitstore\dreamfly
@@ -70,7 +83,7 @@ npm.cmd run dev
 
 统一入口自动停止上次登记的本项目启动器、API、worker 和前端，等待端口释放，检查数据库并执行迁移后重新启动服务，使最新代码和 SMTP 配置生效。开发进程及创建时间记录在被 Git 忽略的 `data/dev-processes.json`；创建时间用于识别 PID 是否已被其他程序复用。PostgreSQL 保持运行。遇到未登记进程占用端口会明确报错，不会误停其他项目。
 
-终端输出带服务前缀，日志持续写入 `data/dev-logs/`。Ctrl+C 停止本次启动的进程；再次运行 `npm.cmd run dev` 自动替换上次服务，只保留一个由统一入口管理的 worker。当前 Windows 环境通过系统进程信息核实创建时间，并停止已登记进程树。
+终端默认只显示启动状态、访问地址和错误摘要，省略请求访问日志、编译进度、更新推荐及工具提示；完整输出持续写入 `data/dev-logs/`。需要实时详情时执行 `npm.cmd run dev -- --verbose`。Ctrl+C 停止本次启动的应用进程；再次运行 `npm.cmd run dev` 自动替换上次服务，只保留一个由统一入口管理的 worker。当前 Windows 环境通过系统进程信息核实创建时间，并停止已登记进程树。
 
 | 进程 | 作用 | 默认端口 |
 | --- | --- | --- |

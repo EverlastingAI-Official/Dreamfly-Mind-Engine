@@ -6,6 +6,9 @@ node_modules/
 dist/
 unpackage/
 .vite/
+# Vite bundles config files beside the original during loading
+vite.config.*.timestamp-*.mjs
+vite.config.*.timestamp-*.js
 *.tsbuildinfo
 
 # Local environment and credentials (keep configuration examples)
@@ -15,8 +18,9 @@ unpackage/
 !.env.production.example
 secrets/
 
-# Runtime storage and backups
+# Runtime storage (including local PostgreSQL, dev logs and process registry)
 data/
+# Database and asset backups
 backups/
 
 # Test coverage

@@ -1,5 +1,6 @@
 import { ref, computed } from 'vue';
 import { api } from '../services/platform.js';
+import { modelProfileInput } from '../services/payloads.js';
 export function useModelConnections({ notify }) {
   const profiles = ref([]),
     defaultProfile = ref(''),
@@ -79,11 +80,7 @@ export function useModelConnections({ notify }) {
     if (!f.model) throw new Error('请先获取模型列表并选择模型');
     const data = await api(f.id ? `/model-profiles/${f.id}` : '/model-profiles', {
       method: f.id ? 'PATCH' : 'POST',
-      body: {
-        ...f,
-        api_key: f.api_key.trim(),
-        api_key_action: action || (f.api_key.trim() ? 'replace' : 'keep'),
-      },
+      body: modelProfileInput(f, action),
     });
     modelForm.value = {
       ...data,
@@ -108,10 +105,7 @@ export function useModelConnections({ notify }) {
     const saved = profiles.value.find((p) => p.id === modelForm.value.id);
     await api(`/model-profiles/${saved.id}`, {
       method: 'PATCH',
-      body: {
-        ...saved,
-        api_key_action: 'clear',
-      },
+      body: modelProfileInput(saved, 'clear'),
     });
     await loadProfiles();
     editModel(profiles.value.find((p) => p.id === saved.id));

@@ -5,7 +5,8 @@ import Fastify from 'fastify';
 import { randomUUID } from 'node:crypto';
 import { auth } from './auth.js';
 import { config } from './config.js';
-import { HttpError } from './errors.js';
+import { HttpError, normalizeError, publicFailure } from './errors.js';
+import type { ErrorResponse, SuccessResponse } from '../../packages/api/index.js';
 import { errorDiagnostic } from './logging.js';
 import { describeRoute } from './openapi.js';
 import { adminRoutes } from './routes/admin.js';
@@ -26,6 +27,7 @@ export async function buildApp(
   } = {},
 ) {
   const app = Fastify({
+    ajv: { customOptions: { removeAdditional: false } },
     logger: options.logger ?? {
       level: process.env.LOG_LEVEL || 'info',
       redact: ['req.headers.cookie', 'req.headers.authorization', 'res.headers["set-cookie"]'],
@@ -48,41 +50,19 @@ export async function buildApp(
     },
   });
   app.setErrorHandler((error, request, reply) => {
-    const failure = error as Error & { code?: string; statusCode?: number };
-    const duplicate = failure.code === '23505';
-    const status =
-      error instanceof HttpError
-        ? error.statusCode
-        : duplicate
-          ? 409
-          : failure.statusCode && failure.statusCode >= 400 && failure.statusCode < 500
-            ? failure.statusCode
-            : 500;
-    if (status >= 500)
+    const failure = normalizeError(error);
+    if (failure.statusCode >= 500)
       request.log.error(
         { diagnostic: errorDiagnostic(error), request_id: request.id },
         'Request failed',
       );
-    return reply.code(status).send({
-      error: {
-        code: duplicate
-          ? 'ALREADY_EXISTS'
-          : error instanceof HttpError
-            ? error.code
-            : status === 500
-              ? 'INTERNAL_ERROR'
-              : 'INVALID_REQUEST',
-        message: duplicate
-          ? '相同版本、名称或请求已存在'
-          : error instanceof HttpError
-            ? error.message
-            : status === 500
-              ? '服务暂时不可用，请检查运行状态'
-              : '请求格式无效',
-        details: error instanceof HttpError ? error.details : undefined,
-      },
+    return reply.code(failure.statusCode).send({
+      error: publicFailure(failure),
       request_id: request.id,
-    });
+    } satisfies ErrorResponse);
+  });
+  app.setNotFoundHandler(() => {
+    throw new HttpError('NOT_FOUND');
   });
   app.addHook('preSerialization', async (request, reply, value) => {
     if (
@@ -92,7 +72,7 @@ export async function buildApp(
       !('error' in value) &&
       request.routeOptions.url !== '/api/v1/openapi.json'
     ) {
-      return { data: value, request_id: request.id };
+      return { data: value, request_id: request.id } satisfies SuccessResponse<unknown>;
     }
     return value;
   });

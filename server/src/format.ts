@@ -20,32 +20,27 @@ export { assetMaxBytes, emptyMind, parseMind, publicationSettings, skillMarkdown
 export function validateSkillSubmission(mind: unknown) {
   const content = validateMind(mind);
   const issues = skillSubmissionIssues(content);
-  check(!issues.length, 422, 'INCOMPLETE_SKILL', issues.join('；'));
+  check(!issues.length, 'INCOMPLETE_SKILL', issues.join('；'));
   return content;
 }
 const validate = new Ajv({ allErrors: true }).compile<Mind>(mindSchema);
 export function validateMind(mind: unknown): Mind {
-  if (!validate(mind))
-    throw new HttpError(422, 'INVALID_SKILL', 'Skill 格式不正确', validate.errors);
+  if (!validate(mind)) throw new HttpError('INVALID_SKILL', 'Skill 格式不正确', validate.errors);
   check(
     new Set(mind.memory.fragments.map((x) => x.id)).size === mind.memory.fragments.length,
-    422,
     'DUPLICATE_MEMORY',
-    '记忆 ID 不可重复',
   );
   for (const value of Object.values(mind.assets))
     check(
       typeof value === 'string' && /^assets\/[a-zA-Z0-9._-]+$/.test(value),
-      422,
       'INVALID_ASSET_PATH',
-      '素材必须引用 assets/ 下的文件',
     );
   return mind;
 }
 export async function unzip(buffer: Buffer): Promise<Map<string, Buffer>> {
   return new Promise((resolve, reject) =>
     yauzl.fromBuffer(buffer, { lazyEntries: true }, (err, zip) => {
-      if (err || !zip) return reject(new HttpError(422, 'INVALID_ZIP', '无法读取 ZIP'));
+      if (err || !zip) return reject(new HttpError('INVALID_ZIP'));
       const files = new Map<string, Buffer>();
       let total = 0,
         count = 0,
@@ -70,9 +65,7 @@ export async function unzip(buffer: Buffer): Promise<Map<string, Buffer>> {
               !name.includes(':') &&
               mode !== 0xa000 &&
               !(entry.generalPurposeBitFlag & 1),
-            422,
             'UNSAFE_ZIP',
-            'ZIP 包含不支持的路径/文件或文件过多',
           );
           if (name.endsWith('/')) {
             zip.readEntry();
@@ -80,7 +73,6 @@ export async function unzip(buffer: Buffer): Promise<Map<string, Buffer>> {
           }
           check(
             !files.has(name) && entry.uncompressedSize <= config.extracted,
-            422,
             'UNSAFE_ZIP',
             'ZIP 文件重复或过大',
           );
@@ -91,7 +83,7 @@ export async function unzip(buffer: Buffer): Promise<Map<string, Buffer>> {
               total += chunk.length;
               if (total > config.extracted) {
                 stream.destroy();
-                fail(new HttpError(413, 'ZIP_TOO_LARGE', 'ZIP 解压内容过大'));
+                fail(new HttpError('ZIP_TOO_LARGE'));
               } else chunks.push(chunk);
             });
             stream.on('error', fail);
@@ -112,11 +104,10 @@ export async function unzip(buffer: Buffer): Promise<Map<string, Buffer>> {
 }
 function markdownMind(source: string, existing?: { mind: Mind; warnings: string[] }) {
   const match = source.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n([\s\S]*)$/);
-  check(match, 422, 'INVALID_SKILL_MD', 'Markdown 缺少 YAML frontmatter');
+  check(match, 'INVALID_SKILL_MD');
   const meta = YAML.parse(match[1], { maxAliasCount: 0 });
   check(
     meta && typeof meta.name === 'string' && typeof meta.description === 'string',
-    422,
     'INVALID_SKILL_MD',
     'Markdown 缺少名称或说明',
   );
@@ -125,9 +116,7 @@ function markdownMind(source: string, existing?: { mind: Mind; warnings: string[
     check(
       existing.mind.slug === meta.name &&
         existing.mind.persona.instructions.trim() === instructions,
-      409,
       'PERSONA_CONFLICT',
-      'mind.json 与 SKILL.md 人格不一致，请修改后重新上传',
     );
     return existing;
   }
@@ -157,9 +146,9 @@ export async function importPackage(name: string, buffer: Buffer) {
     if (markdown) result = markdownMind(files.get(markdown)!.toString('utf8'), result);
   } catch (error) {
     if (error instanceof HttpError) throw error;
-    throw new HttpError(422, 'INVALID_SKILL', '无法解析 Skill 内容，请检查 JSON 或 Markdown 格式');
+    throw new HttpError('INVALID_SKILL', '无法解析 Skill 内容，请检查 JSON 或 Markdown 格式');
   }
-  check(result, 422, 'NO_SKILL', '未找到 mind.json、.mind 或 SKILL.md');
+  check(result, 'NO_SKILL');
   validateMind(result.mind);
   const entry = json || markdown!;
   const root = archive && entry.includes('/') ? entry.slice(0, entry.lastIndexOf('/') + 1) : '';
@@ -184,6 +173,6 @@ export function validateSkillInput(source: unknown) {
     return { mind: validateMind(result.mind), warnings: result.warnings };
   } catch (error) {
     if (error instanceof HttpError) throw error;
-    throw new HttpError(422, 'INVALID_SKILL', '无法解析 Skill 内容，请检查 JSON 格式');
+    throw new HttpError('INVALID_SKILL', '无法解析 Skill 内容，请检查 JSON 格式');
   }
 }

@@ -5,6 +5,7 @@ import { pool } from '../db.js';
 import { check, id, text } from '../errors.js';
 import type { ModelParameters, ModelProfile, ModelProfileInput } from '../types.js';
 import { checkedURL, providers } from './model-provider.js';
+import type { ModelProfileDto } from '../../../packages/api/index.js';
 export async function profile(user: string, profileId: string) {
   const p = (
     await pool.query<ModelProfile>('SELECT * FROM model_profiles WHERE id=$1 AND user_id=$2', [
@@ -12,10 +13,10 @@ export async function profile(user: string, profileId: string) {
       user,
     ])
   ).rows[0];
-  check(p, 404, 'NOT_FOUND', '未找到模型配置');
+  check(p, 'NOT_FOUND', '未找到模型配置');
   return p;
 }
-export const profileView = (p: ModelProfile) => ({
+export const profileView = (p: ModelProfile): ModelProfileDto => ({
   id: p.id,
   name: p.name,
   provider: p.provider,
@@ -24,7 +25,7 @@ export const profileView = (p: ModelProfile) => ({
   model: p.model,
   parameters: p.parameters,
   consent: p.consent,
-  verified_at: p.verified_at,
+  verified_at: p.verified_at?.toISOString() ?? null,
   api_key_configured: !!p.key_cipher,
 });
 export function snapshot(p: ModelProfile) {
@@ -43,13 +44,12 @@ export async function saveModelProfile(
 ) {
   const profileId = existing?.id || randomUUID();
   const preset = providers.find((x) => x.id === b.provider);
-  check(preset, 422, 'INVALID_PROVIDER', '未知厂商');
+  check(preset, 'INVALID_PROVIDER');
   const protocol = preset.id === 'custom' ? b.protocol : preset.protocol;
   check(
-    ['openai-chat', 'anthropic-messages', 'gemini-generate-content'].includes(protocol),
-    422,
+    typeof protocol === 'string' &&
+      ['openai-chat', 'anthropic-messages', 'gemini-generate-content'].includes(protocol),
     'INVALID_PROTOCOL',
-    '不支持的协议',
   );
   const base =
     preset.id === 'custom' ? text(b.base_url, 'API 地址', 500).replace(/\/$/, '') : preset.base_url;
@@ -65,13 +65,10 @@ export async function saveModelProfile(
       Number.isInteger(max) &&
       max >= 16 &&
       max <= 16384,
-    422,
     'INVALID_PARAMETERS',
-    '超时 10–600 秒，输出上限 16–16384',
   );
   check(
     Number.isInteger(context) && context >= 4000 && context <= 200000,
-    422,
     'INVALID_PARAMETERS',
     '输入字符预算须为 4000–200000',
   );
@@ -85,7 +82,6 @@ export async function saveModelProfile(
       Number.isFinite(Number(values.temperature)) &&
         Number(values.temperature) >= 0 &&
         Number(values.temperature) <= 2,
-      422,
       'INVALID_PARAMETERS',
       'temperature 须为 0–2',
     );
@@ -95,7 +91,7 @@ export async function saveModelProfile(
   const changed = existing && (existing.base_url !== base || existing.provider !== b.provider);
   if (changed) cipher = null;
   const action = b.api_key_action || 'keep';
-  check(['keep', 'replace', 'clear'].includes(action), 422, 'INVALID_KEY_ACTION', '无效的密钥操作');
+  check(['keep', 'replace', 'clear'].includes(action), 'INVALID_KEY_ACTION');
   if (action === 'clear') cipher = null;
   if (action === 'replace')
     cipher = encrypt(text(b.api_key, 'API Key', 4096), `${user}:${profileId}`);

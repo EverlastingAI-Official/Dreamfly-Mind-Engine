@@ -20,7 +20,7 @@ test('PostgreSQL account, skill, model ownership and conversation integration',a
   const {decrypt,codeDigest}=await import('../src/crypto.js');
   const {emptyMind}=await import('../src/format.js');
   let lastContext:any[]=[];
-  async function* fakeModel(_p:any,messages:any[]){lastContext=messages;if(messages.at(-1)?.content==='fixture:fail'){yield {delta:'partial'};const {HttpError}=await import('../src/errors.js');throw new HttpError(502,'UPSTREAM_429','fixture rate limit');}yield {delta:'你好，保持原文。'};yield {usage:{input_tokens:12,output_tokens:8}};}
+  async function* fakeModel(_p:any,messages:any[]){lastContext=messages;if(messages.at(-1)?.content==='fixture:fail'){yield {delta:'partial'};const {HttpError}=await import('../src/errors.js');throw new HttpError('UPSTREAM_ERROR','fixture rate limit');}yield {delta:'你好，保持原文。'};yield {usage:{input_tokens:12,output_tokens:8}};}
   await pool.query(await readFile('migrations/001_platform.sql','utf8'));
   await pool.query(await readFile('migrations/002_owner_github.sql','utf8'));
   await t.test('weekly migration stops immediate jobs while retaining successful records and remote markers',async()=>{
@@ -76,9 +76,9 @@ test('PostgreSQL account, skill, model ownership and conversation integration',a
     });
     await t.test('new passwords require at least eight characters with letters and digits on every write route',async()=>{
       for(const password of ['abc1234','abcdefgh','12345678','a1'.repeat(65)]){
-        const payload={email:a.user.email,challenge_id:randomUUID(),code:'123456',display_name:'fixture',password};
+        const payload={email:a.user.email,challenge_id:randomUUID(),code:'123456',password};
         for(const route of ['/auth/register','/auth/reset-password','/auth/change-password']){
-          const response=await request('POST',route,route==='/auth/change-password'?{old_password:'abc12345',password}:payload,a);
+          const response=await request('POST',route,route==='/auth/change-password'?{old_password:'abc12345',password}:route==='/auth/register'?{...payload,display_name:'fixture'}:payload,a);
           assert.equal(response.statusCode,422,response.body);
           assert.equal(response.json().error.code,'INVALID_PASSWORD');
         }
@@ -209,7 +209,7 @@ test('PostgreSQL account, skill, model ownership and conversation integration',a
       const content=emptyMind();content.persona.self_description='我重视真实。';content.memory.fragments=[{id:'one',content:'一次经历'}];content.assets={image:asset.reference};
       const created=await request('POST','/skills',{content},a);assert.equal(created.statusCode,200,created.body);
       await pool.query('UPDATE assets SET size=$1 WHERE id=$2',[assetMaxBytes+1,asset.id]);
-      const blocked=await request('POST',`/skills/${created.json().data.id}/publish`,{listed:false,compliance_confirmed:true},a);assert.equal(blocked.statusCode,422,blocked.body);assert.equal(blocked.json().error.code,'ASSET_TOO_LARGE');
+      const blocked=await request('POST',`/skills/${created.json().data.id}/publish`,{listed:false,compliance_confirmed:true},a);assert.equal(blocked.statusCode,413,blocked.body);assert.equal(blocked.json().error.code,'ASSET_TOO_LARGE');
     });
     await t.test('image upload rejects audio content without creating an asset',async()=>{
       const boundary='fixture-boundary',before=(await pool.query('SELECT count(*)::int n FROM assets')).rows[0].n;
@@ -225,6 +225,11 @@ test('PostgreSQL account, skill, model ownership and conversation integration',a
       assert.equal((await pool.query('SELECT count(*)::int n FROM model_profiles')).rows[0].n,before);
       assert.equal((await request('POST','/model-providers/deepseek/models',{},b)).statusCode,422);
       const p=await request('POST','/model-profiles',{name:'Test connection',provider:'deepseek',model:'test-model',api_key:'test-key-only',api_key_action:'replace',consent:true,parameters:{max_tokens:1024,timeout_seconds:30}},b);assert.equal(p.statusCode,200,p.body);profileId=p.json().data.id;assert.ok(!p.body.includes('test-key-only'));
+      const forged=await request('PATCH',`/model-profiles/${profileId}`,{name:'Test connection',provider:'deepseek',model:'test-model',verified_at:new Date().toISOString()},b);
+      assert.equal(forged.statusCode,400);
+      assert.equal(forged.json().error.code,'INVALID_REQUEST');
+      assert.equal(typeof forged.json().request_id,'string');
+      assert.equal((await pool.query('SELECT verified_at FROM model_profiles WHERE id=$1',[profileId])).rows[0].verified_at,null);
       assert.equal((await request('POST','/model-providers/deepseek/models',{profile_id:profileId},b)).statusCode,200);
       assert.equal(discoveryCalls.at(-1)?.key,'test-key-only');
       assert.equal((await request('POST','/model-providers/deepseek/models',{profile_id:profileId,api_key:'replacement-fixture'},b)).statusCode,200);
@@ -251,6 +256,8 @@ test('PostgreSQL account, skill, model ownership and conversation integration',a
       const detail=await request('GET','/conversations/'+conversationId,undefined,b);
       assert.equal(detail.statusCode,200,detail.body);
       assert.equal(detail.json().data.id,conversationId);
+      assert.equal(typeof detail.json().data.created_at,'string');
+      assert.equal('user_id' in detail.json().data,false);
       assert.equal((await request('GET','/conversations/'+conversationId,undefined,a)).statusCode,404);
       const later=await request('GET','/conversations?page=2&page_size=200',undefined,b);
       assert.ok(later.json().data.some((item:{id:string})=>item.id===conversationId));
@@ -268,6 +275,9 @@ test('PostgreSQL account, skill, model ownership and conversation integration',a
       assert.equal(response.statusCode,200,response.body);
       assert.equal((response.body.match(/event: message.failed/g)||[]).length,1);
       assert.match(response.body,/fixture rate limit/);
+      const failedEvent=JSON.parse(response.body.split('event: message.failed\n')[1].split('data: ')[1].split('\n')[0]);
+      assert.equal(failedEvent.error.code,'UPSTREAM_ERROR');
+      assert.equal(typeof failedEvent.request_id,'string');
       const history=await request('GET','/conversations/'+conversationId+'/messages',undefined,b);
       assert.equal(history.json().data.at(-1).status,'failed');
       assert.equal(history.json().data.at(-1).content,'partial');

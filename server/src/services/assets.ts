@@ -14,8 +14,8 @@ export async function validateAssets(content: Mind, user: string, db: DB = pool)
     const a = (
       await db.query('SELECT * FROM assets WHERE id=$1 AND user_id=$2', [assetId(ref), user])
     ).rows[0];
-    check(a, 422, 'MISSING_ASSET', '素材不存在或不属于当前用户');
-    check(a.size <= assetMaxBytes, 422, 'ASSET_TOO_LARGE', '素材超过 10 MB，请移除后重新上传');
+    check(a, 'MISSING_ASSET');
+    check(a.size <= assetMaxBytes, 'ASSET_TOO_LARGE');
   }
 }
 export function media(buffer: Buffer) {
@@ -29,10 +29,10 @@ export function media(buffer: Buffer) {
   if (buffer.toString('ascii', 0, 4) === 'OggS') return ['audio/ogg', 'ogg'];
   if (buffer.toString('ascii', 0, 3) === 'ID3' || (buffer[0] === 255 && (buffer[1] & 224) === 224))
     return ['audio/mpeg', 'mp3'];
-  throw new HttpError(422, 'INVALID_MEDIA', '仅支持 PNG、JPEG、WebP、WAV、OGG、MP3 素材');
+  throw new HttpError('INVALID_MEDIA');
 }
 export async function storeAsset(user: string, name: string, data: Buffer) {
-  check(data.length <= assetMaxBytes, 413, 'ASSET_TOO_LARGE', '素材最大 10 MB');
+  check(data.length <= assetMaxBytes, 'ASSET_TOO_LARGE', '素材最大 10 MB');
   const [mime, ext] = media(data),
     asset = randomUUID();
   await mkdir(config.assets, { recursive: true });
