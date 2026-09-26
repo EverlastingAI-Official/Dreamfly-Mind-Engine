@@ -12,6 +12,12 @@ const { descriptor } = parse(
 );
 const compiled = compileScript(descriptor, { id: 'workspace-test', inlineTemplate: true }).content;
 function workspace(dependencies) {
+  dependencies['../composables/usePageUi.js'] = {
+    pageUiKey: Symbol('page-ui'),
+    createPageUi: () => ({ run: (action) => action(), notify() {} }),
+  };
+  dependencies['./ActionFeedback.vue'] = { render: () => null };
+  dependencies['../services/navigation.mjs'].takeNavigationFeedback = () => null;
   const source = compiled
     .replace(/import\s+([\s\S]*?)\s+from\s+['"]([^'"]+)['"];?/g, (_, bindings, module) => {
       const value = module === 'vue' ? 'Vue' : `dependencies[${JSON.stringify(module)}]`;

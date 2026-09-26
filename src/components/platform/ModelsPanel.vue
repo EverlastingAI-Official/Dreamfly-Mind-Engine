@@ -6,7 +6,7 @@
     <view class="panel">
       <view class="section-heading">
         <h2>{{ modelForm.id ? '编辑连接' : '新增模型连接' }}</h2>
-        <n-button class="small" :disabled="busy" @click="resetModel"> 新建 </n-button>
+        <n-button class="small" :disabled="busy" @click="createModel"> 新建 </n-button>
       </view>
       <n-label>
         连接名称
@@ -117,7 +117,7 @@
           {{ p.api_key_configured ? '已保存密钥' : '缺少密钥' }}
         </p>
         <view class="row">
-          <n-button class="small" :disabled="busy" @click="editModel(p)"> 编辑 </n-button>
+          <n-button class="small" :disabled="busy" @click="selectModel(p)"> 编辑 </n-button>
           <n-button
             class="small"
             :disabled="busy || !p.verified_at"
@@ -165,6 +165,14 @@ const {
   providerCatalog,
   loadProfiles,
 } = useModelConnections({ notify });
+function createModel() {
+  resetModel();
+  notify('已打开新连接表单，请填写后保存', 'info');
+}
+function selectModel(profile) {
+  editModel(profile);
+  notify('正在编辑连接：' + profile.name, 'info');
+}
 onMounted(() =>
   run(async () => {
     providerCatalog.value = await api('/model-providers');

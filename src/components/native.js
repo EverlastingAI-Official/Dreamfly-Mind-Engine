@@ -1,5 +1,7 @@
 // Native H5 form controls preserve browser form/checkbox semantics inside UniApp.
-import { defineComponent, h } from 'vue';
+import { defineComponent, h, inject, ref } from 'vue';
+import { pageUiKey } from '../composables/usePageUi.js';
+import { publicError, tr } from '../services/locale.js';
 function control(tag) {
   return defineComponent({
     inheritAttrs: false,
@@ -49,18 +51,50 @@ export const NTextarea = control('textarea');
 function container(tag) {
   return defineComponent({
     inheritAttrs: false,
-    setup:
-      (_props, { attrs, slots }) =>
-      () =>
+    setup(_props, { attrs, slots }) {
+      const pending = ref(false);
+      const ui = inject(pageUiKey, null);
+      const eventName = tag === 'button' ? 'onClick' : tag === 'form' ? 'onSubmit' : null;
+      async function activate(event) {
+        if (pending.value) {
+          event.preventDefault();
+          return;
+        }
+        try {
+          const result = attrs[eventName]?.(event);
+          if (result?.then) {
+            pending.value = true;
+            await result;
+          }
+        } catch (error) {
+          ui?.notify(publicError(error), 'error');
+        } finally {
+          pending.value = false;
+        }
+      }
+      return () =>
         h(
           tag,
           {
             ...(tag === 'button' ? { type: 'button' } : {}),
             ...attrs,
             class: [`native-${tag}`, attrs.class],
+            ...(eventName ? { [eventName]: activate, 'aria-busy': pending.value } : {}),
+            ...(tag === 'button' ? { disabled: attrs.disabled || pending.value } : {}),
           },
-          slots.default?.(),
-        ),
+          [
+            ...(slots.default?.() || []),
+            ...(pending.value
+              ? [
+                  h('span', { class: 'action-pending', role: 'status' }, [
+                    h('span', { class: 'action-spinner', 'aria-hidden': 'true' }),
+                    tr('处理中…', 'Working…'),
+                  ]),
+                ]
+              : []),
+          ],
+        );
+    },
   });
 }
 export const NButton = container('button');

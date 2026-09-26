@@ -8,10 +8,9 @@ export function useConversations({ notify }) {
     messages = ref([]);
   const input = ref(''),
     generating = ref(false),
+    stopping = ref(false),
     messageBox = ref(null);
-  const profiles = ref([]),
-    selectedProfile = ref(''),
-    page = ref(1),
+  const page = ref(1),
     hasMore = ref(false);
   let generationId,
     controller,
@@ -20,8 +19,9 @@ export function useConversations({ notify }) {
     disposed = true;
     controller?.abort();
   });
-  async function loadConversations() {
-    const items = await api('/conversations?page=' + page.value + '&page_size=50');
+  async function loadConversations(targetPage = page.value) {
+    const items = await api('/conversations?page=' + targetPage + '&page_size=50');
+    page.value = targetPage;
     conversations.value = items;
     hasMore.value = items.length === 50;
   }
@@ -32,16 +32,19 @@ export function useConversations({ notify }) {
       api('/conversations/' + id + '/messages'),
     ]);
     currentConversation.value = conversation;
-    selectedProfile.value = conversation.profile_id || '';
     messages.value = history;
   }
   async function load(id) {
-    const connections = await api('/model-profiles');
-    profiles.value = connections.profiles;
     await loadConversations();
     if (id) await loadConversation(id);
   }
   const openConversation = (conversation) => navigate('chat', { id: conversation.id });
+  function scrollMessages() {
+    return nextTick(() => {
+      const element = messageBox.value?.$el || messageBox.value;
+      if (element) element.scrollTop = element.scrollHeight;
+    });
+  }
   async function chat() {
     if (generating.value || !currentConversation.value || !input.value.trim()) return;
     const conversationId = currentConversation.value.id,
@@ -51,6 +54,7 @@ export function useConversations({ notify }) {
     notify('');
     controller = new AbortController();
     messages.value.push({ id: crypto.randomUUID(), role: 'user', content, status: 'completed' });
+    scrollMessages();
     let assistantId,
       failed = false;
     try {
@@ -76,48 +80,52 @@ export function useConversations({ notify }) {
             failed = true;
             notify(publicError(data.error), 'error');
           }
-          nextTick(() => {
-            const element = messageBox.value?.$el || messageBox.value;
-            if (element) element.scrollTop = element.scrollHeight;
-          });
+          scrollMessages();
         },
         controller.signal,
       );
     } catch (error) {
       if (!disposed && error.name !== 'AbortError') {
         failed = true;
-        notify(error.message, 'error');
+        if (!assistantId) input.value = content;
+        notify(publicError(error), 'error');
       }
     } finally {
-      generating.value = false;
       controller = null;
       generationId = null;
       if (!disposed) {
         try {
           messages.value = await api('/conversations/' + conversationId + '/messages');
         } catch (error) {
-          if (!failed) notify(error.message, 'error');
+          if (!failed) notify(publicError(error), 'error');
         }
       }
+      generating.value = false;
+      stopping.value = false;
     }
   }
   async function cancelGeneration() {
-    if (generationId) {
-      await api(
-        '/conversations/' + currentConversation.value.id + '/messages/' + generationId + '/cancel',
-        { method: 'POST' },
-      );
-    } else controller?.abort();
-  }
-  async function switchModel() {
-    const id = currentConversation.value.id;
-    await api('/conversations/' + id + '/model-profile', {
-      method: 'PUT',
-      body: { profile_id: selectedProfile.value },
-    });
-    await loadConversation(id);
-    await loadConversations();
-    notify('后续消息将使用所选模型');
+    if (stopping.value) return;
+    stopping.value = true;
+    try {
+      if (generationId) {
+        await api(
+          '/conversations/' +
+            currentConversation.value.id +
+            '/messages/' +
+            generationId +
+            '/cancel',
+          { method: 'POST' },
+        );
+        notify('已请求停止生成', 'info');
+      } else {
+        controller?.abort();
+        notify('已停止生成', 'info');
+      }
+    } catch (error) {
+      stopping.value = false;
+      throw error;
+    }
   }
   async function renameConversation() {
     const conversation = currentConversation.value;
@@ -126,11 +134,12 @@ export function useConversations({ notify }) {
     await api('/conversations/' + conversation.id, { method: 'PATCH', body: { title } });
     conversation.title = title;
     await loadConversations();
+    notify('会话已重命名');
   }
   async function deleteConversation() {
     if (!window.confirm('删除此会话及其消息？')) return;
     await api('/conversations/' + currentConversation.value.id, { method: 'DELETE' });
-    await navigate('chat', {}, true);
+    await navigate('chat', {}, true, '会话已删除');
   }
   return {
     conversations,
@@ -138,9 +147,8 @@ export function useConversations({ notify }) {
     messages,
     input,
     generating,
+    stopping,
     messageBox,
-    profiles,
-    selectedProfile,
     page,
     hasMore,
     load,
@@ -148,7 +156,6 @@ export function useConversations({ notify }) {
     openConversation,
     chat,
     cancelGeneration,
-    switchModel,
     renameConversation,
     deleteConversation,
   };

@@ -26,23 +26,14 @@
         class="search"
         v-model="search"
         :placeholder="tr('搜索名称或 ID', 'Search name or ID')"
-        @keyup.enter="
-          page = 1;
-          run(loadSkills);
-        "
+        @keyup.enter="run(() => loadSkills(1))"
       />
-      <n-button
-        class="small"
-        @click="
-          page = 1;
-          run(loadSkills);
-        "
-      >
+      <n-button class="small" :disabled="busy" @click="run(() => loadSkills(1))">
         {{ tr('搜索', 'Search') }}
       </n-button>
     </view>
   </view>
-  <view v-if="!skills.length" class="empty panel">
+  <view v-if="loaded && !skills.length" class="empty panel">
     <text class="empty-icon">◇</text>
     <h3>
       {{
@@ -69,17 +60,9 @@
       <h3>{{ skill.name }}</h3>
       <p>{{ skill.description }}</p>
       <text class="muted">{{ skill.author }}</text>
-      <text class="skill-id">ID: {{ skill.id }}</text>
       <view class="row">
         <n-button class="small" @click="run(() => copySkill(skill.id))">
           {{ tr('复制 ID', 'Copy ID') }}
-        </n-button>
-        <n-button
-          v-if="skill.status === 'published' && skill.publication.listed"
-          class="small"
-          @click="run(() => copySkill(skillShareUrl(skill.id)))"
-        >
-          {{ tr('分享链接', 'Share link') }}
         </n-button>
       </view>
       <view class="row card-actions">
@@ -90,14 +73,7 @@
     </view>
   </view>
   <view class="row pagination">
-    <n-button
-      class="small"
-      :disabled="busy || page === 1"
-      @click="
-        page--;
-        run(loadSkills);
-      "
-    >
+    <n-button class="small" :disabled="busy || page === 1" @click="run(() => loadSkills(page - 1))">
       {{ tr('上一页', 'Previous') }}
     </n-button>
     <text>
@@ -106,10 +82,7 @@
     <n-button
       class="small"
       :disabled="busy || page * 24 >= skillTotal"
-      @click="
-        page++;
-        run(loadSkills);
-      "
+      @click="run(() => loadSkills(page + 1))"
     >
       {{ tr('下一页', 'Next') }}
     </n-button>
@@ -121,7 +94,6 @@ import { ref, watch } from 'vue';
 import { usePageUi } from '../../composables/usePageUi.js';
 import { api } from '../../services/platform.js';
 import { tr } from '../../services/locale.js';
-import { skillShareUrl } from '../../services/navigation.mjs';
 import {
   newSkill,
   importSkill,
@@ -135,14 +107,17 @@ const { busy, run, notify } = usePageUi();
 const search = ref(''),
   page = ref(1),
   skills = ref([]),
+  loaded = ref(false),
   skillTotal = ref(0);
 const copySkill = (value) => copy(value, notify);
-async function loadSkills() {
+async function loadSkills(targetPage = page.value) {
   const result = await api(
-    '/skills?scope=mine&search=' + encodeURIComponent(search.value) + '&page=' + page.value,
+    '/skills?scope=mine&search=' + encodeURIComponent(search.value) + '&page=' + targetPage,
   );
+  page.value = targetPage;
   skills.value = result.items;
   skillTotal.value = result.total;
+  loaded.value = true;
 }
 watch(
   () => props.active,

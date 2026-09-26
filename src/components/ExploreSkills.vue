@@ -1,9 +1,5 @@
 <template>
   <view class="explore-skills">
-    <view v-if="notice" class="notice" :class="{ error: failed }" role="status">
-      {{ notice }}
-      <n-button class="dismiss" @click="notice = ''">×</n-button>
-    </view>
     <template v-if="!detailPage">
       <view class="hero">
         <text class="eyebrow">THE MIND COMMONS</text>
@@ -118,13 +114,9 @@
           <h3>{{ skill.name }}</h3>
           <p>{{ skill.description }}</p>
           <text class="muted">{{ skill.author }} · v{{ skill.version }}</text>
-          <text class="skill-id">ID: {{ skill.id }}</text>
           <view class="row">
             <n-button class="small link" @click="copy(skill.id)">
               {{ tr('复制 ID', 'Copy ID') }}
-            </n-button>
-            <n-button class="small link" @click="copy(skillShareUrl(skill.id))">
-              {{ tr('分享链接', 'Share link') }}
             </n-button>
           </view>
           <view class="row card-actions">
@@ -203,14 +195,10 @@
               {{ tr('管理 Skill', 'Manage Skill') }}
             </n-button>
           </view>
-          <text class="skill-id">ID: {{ detail.id }}</text>
           <github-skill-link :url="detail.github_url" />
           <view class="row">
             <n-button class="small" @click="copy(detail.id)">
               {{ tr('复制 ID', 'Copy ID') }}
-            </n-button>
-            <n-button class="small" @click="copy(skillShareUrl(detail.id))">
-              {{ tr('复制分享链接', 'Copy share link') }}
             </n-button>
           </view>
           <p>
@@ -306,26 +294,43 @@
           </p>
           <n-label v-if="auth.user">
             {{ tr('模型连接', 'Model connection') }}
-            <select v-model="selectedModel">
+            <select v-model="selectedModel" :disabled="modelsLoading || starting">
               <option value="">
-                {{ tr('请选择模型连接', 'Choose a model connection') }}
+                {{
+                  modelsLoading
+                    ? tr('正在读取连接…', 'Loading connections…')
+                    : tr('请选择模型连接', 'Choose a model connection')
+                }}
               </option>
               <option v-for="model in modelChoices" :key="model.id" :value="model.id">
                 {{ model.name }} · {{ model.model }}
               </option>
             </select>
           </n-label>
-          <p v-if="modelError" class="validation-error">{{ modelError }}</p>
+          <p v-if="modelError" class="validation-error" role="alert">{{ modelError }}</p>
+          <p v-else-if="auth.user && !modelsLoading && !modelChoices.length" class="muted">
+            {{
+              tr(
+                '请先配置模型连接，再开始对话。',
+                'Configure a model connection before starting a chat.',
+              )
+            }}
+          </p>
+          <p v-if="startError" class="validation-error" role="alert">
+            {{ tr('无法开始对话：', 'Unable to start chat: ') }}{{ startError }}
+          </p>
           <view class="row">
             <n-button
               class="primary"
-              :disabled="!detail.publication.chat"
-              @click="$emit('chat', detail, selectedModel)"
+              :disabled="!detail.publication.chat || starting"
+              @click="beginChat(detail, selectedModel)"
             >
               {{
-                detail.publication.chat
-                  ? tr('开始对话', 'Start chat')
-                  : tr('作者未开放交互', 'Chat disabled by author')
+                starting
+                  ? tr('正在启动…', 'Starting…')
+                  : detail.publication.chat
+                    ? tr('开始对话', 'Start chat')
+                    : tr('作者未开放交互', 'Chat disabled by author')
               }}
             </n-button>
             <n-button @click="$emit('models')">
@@ -342,6 +347,8 @@
 import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from 'vue';
 import { NButton, NForm, NInput, NLabel } from './native.js';
 import GithubSkillLink from './GithubSkillLink.vue';
+import { useStartChat } from '../composables/useStartChat.js';
+import { usePageUi } from '../composables/usePageUi.js';
 import { api, auth } from '../services/platform.js';
 import { locale, tr, copyText, publicError } from '../services/locale.js';
 import {
@@ -349,7 +356,6 @@ import {
   pageUrl,
   navigate,
   navigateUrl,
-  skillShareUrl,
   signIn,
   signInForSkill,
   takeSkillIntent,
@@ -365,7 +371,9 @@ const props = defineProps({
   detailPage: Boolean,
   active: Boolean,
 });
-defineEmits(['create', 'import', 'edit', 'chat', 'models']);
+defineEmits(['create', 'import', 'edit', 'models']);
+const { starting, startError, beginChat } = useStartChat();
+const { notify } = usePageUi();
 const defaults = () => ({
   search: '',
   collection: 'all',
@@ -386,7 +394,6 @@ const filters = reactive(routeFilters()),
   total = ref(0),
   page = computed(() => Number(exploreQuery(props.query).page || 1));
 const loading = ref(false),
-  notice = ref(''),
   failed = ref(false),
   detailId = computed(() => props.query.id || ''),
   detail = ref(null),
@@ -395,12 +402,13 @@ const downloading = ref(''),
   reacting = reactive(new Set()),
   pages = computed(() => Math.max(1, Math.ceil(total.value / 24)));
 const modelChoices = ref([]),
+  modelsLoading = ref(false),
   selectedModel = ref(''),
   modelError = ref('');
 let requestNumber = 0,
   detailRequest = 0;
 function error(e) {
-  notice.value = publicError(e);
+  notify(publicError(e), 'error');
   failed.value = true;
 }
 function login() {
@@ -409,11 +417,9 @@ function login() {
 async function copy(value) {
   try {
     await copyText(value);
-    notice.value = tr('已复制，可分享给其他人。', 'Copied. Ready to share.');
-    failed.value = false;
+    notify(tr('已复制 ID，可分享给其他人。', 'ID copied. Ready to share.'));
   } catch (e) {
-    notice.value = e.message;
-    failed.value = true;
+    notify(publicError(e), 'error');
   }
 }
 function formatDate(value) {
@@ -422,7 +428,7 @@ function formatDate(value) {
 async function loadList() {
   const request = ++requestNumber;
   loading.value = true;
-  notice.value = '';
+  notify('');
   failed.value = false;
   const params = new URLSearchParams({
     scope: 'public',
@@ -461,7 +467,7 @@ function searchSkills() {
 }
 function resetFilters() {
   Object.assign(filters, defaults());
-  searchSkills();
+  return searchSkills();
 }
 function changePage(value) {
   return navigate('explore', { ...applied.value, page: value });
@@ -473,7 +479,7 @@ async function loadDetail() {
   const request = ++detailRequest;
   detail.value = null;
   detailLoading.value = true;
-  notice.value = '';
+  notify('');
   failed.value = false;
   try {
     if (!validId(detailId.value)) throw new Error(tr('Skill ID 无效', 'Invalid Skill ID'));
@@ -497,7 +503,9 @@ async function loadDetail() {
 async function loadModels(request) {
   modelChoices.value = [];
   modelError.value = '';
+  modelsLoading.value = false;
   if (!auth.user) return;
+  modelsLoading.value = true;
   try {
     const result = await api('/model-profiles');
     if (request !== detailRequest) return;
@@ -506,6 +514,8 @@ async function loadModels(request) {
       selectedModel.value = result.default_profile_id || '';
   } catch (e) {
     if (request === detailRequest) modelError.value = publicError(e);
+  } finally {
+    if (request === detailRequest) modelsLoading.value = false;
   }
 }
 function backToResults() {
@@ -513,13 +523,11 @@ function backToResults() {
 }
 async function react(skill, kind) {
   if (!auth.user) {
-    signInForSkill(skill, kind);
-    return;
+    return signInForSkill(skill, kind);
   }
   if (reacting.has(skill.id)) return;
   reacting.add(skill.id);
-  notice.value = '';
-  failed.value = false;
+  notify('');
   try {
     const state = await api(`/skills/${skill.id}/reactions/${kind}`, {
       method: 'PUT',
@@ -530,22 +538,28 @@ async function react(skill, kind) {
     if (card) Object.assign(card, state);
     if (!props.detailPage && (applied.value.collection !== 'all' || applied.value.sort === 'likes'))
       await loadList();
+    notify(
+      kind === 'like'
+        ? state.liked
+          ? tr('已喜欢', 'Liked')
+          : tr('已取消喜欢', 'Like removed')
+        : state.favorited
+          ? tr('已收藏', 'Saved')
+          : tr('已取消收藏', 'Removed from saved Skills'),
+    );
   } catch (e) {
-    if (e.code === 'LOGIN_REQUIRED') login();
-    else error(e);
+    notify(publicError(e), 'error');
   } finally {
     reacting.delete(skill.id);
   }
 }
 async function download(skill) {
   if (!auth.user) {
-    signInForSkill(skill, 'download');
-    return;
+    return signInForSkill(skill, 'download');
   }
   if (downloading.value) return;
   downloading.value = skill.id;
-  notice.value = '';
-  failed.value = false;
+  notify('');
   try {
     const blob = await api(
       `/skills/${skill.id}/export?scope=public&version=${skill.published_version_id}`,
@@ -559,10 +573,9 @@ async function download(skill) {
     a.click();
     a.remove();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
-    notice.value = tr('已开始下载 Skill 包。', 'Skill package download started.');
+    notify(tr('已开始下载 Skill 包。', 'Skill package download started.'));
   } catch (e) {
-    if (e.code === 'LOGIN_REQUIRED') login();
-    else error(e);
+    notify(publicError(e), 'error');
   } finally {
     downloading.value = '';
   }
@@ -601,15 +614,6 @@ onUnmounted(() => {
 }
 .explore-skills .filters .search-field {
   margin-bottom: 20px;
-}
-.skill-id {
-  display: block;
-  font-family: monospace;
-  font-size: 12px;
-  overflow-wrap: anywhere;
-  user-select: text;
-  color: #657b6a;
-  margin: 12px 0;
 }
 .explore-skills .reaction-actions {
   margin-top: 12px;

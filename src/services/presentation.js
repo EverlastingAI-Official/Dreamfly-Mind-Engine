@@ -13,7 +13,3 @@ export const statusName = (status) =>
     running: '执行中',
     succeeded: '成功',
   })[status] || status;
-export const usageText = (usage) =>
-  !usage
-    ? '用量未知'
-    : `输入 ${usage.prompt_tokens ?? usage.input_tokens ?? usage.promptTokenCount ?? '未知'} / 输出 ${usage.completion_tokens ?? usage.output_tokens ?? usage.candidatesTokenCount ?? '未知'} tokens`;

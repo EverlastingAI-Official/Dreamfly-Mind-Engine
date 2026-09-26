@@ -17,16 +17,8 @@
       <view class="panel">
         <h2>基本信息</h2>
         <view v-if="editingId" class="row">
-          <text class="skill-id">ID: {{ editingId }}</text>
           <n-button class="small" @click="run(() => copySkill(editingId))">
             {{ tr('复制 ID', 'Copy ID') }}
-          </n-button>
-          <n-button
-            v-if="detail?.status === 'published' && detail?.publication.listed"
-            class="small"
-            @click="run(() => copySkill(skillShareUrl(editingId)))"
-          >
-            {{ tr('分享链接', 'Share link') }}
           </n-button>
         </view>
         <n-label>
@@ -99,7 +91,7 @@
         <n-button class="small" @click="run(() => uploadAsset('image'))"> 上传图片 </n-button>
         <view v-for="(reference, key) in imageAssets" :key="key" class="row spaced">
           <text>{{ reference.split('/')[1] }}</text>
-          <n-button class="small" @click="delete draft.assets[key]"> 移除图片 </n-button>
+          <n-button class="small" @click="removeAsset(key)"> 移除图片 </n-button>
         </view>
       </view>
       <view class="panel">
@@ -108,7 +100,7 @@
         <n-button class="small" @click="run(() => uploadAsset('audio'))"> 上传声音 </n-button>
         <view v-for="(reference, key) in audioAssets" :key="key" class="row spaced">
           <text>{{ reference.split('/')[1] }}</text>
-          <n-button class="small" @click="delete draft.assets[key]"> 移除声音 </n-button>
+          <n-button class="small" @click="removeAsset(key)"> 移除声音 </n-button>
         </view>
       </view>
     </view>
@@ -181,12 +173,16 @@
         <p v-if="jobStatusError" class="validation-error">
           {{ jobStatusError }}
         </p>
+        <p v-if="startError" class="validation-error" role="alert">
+          {{ tr('无法开始对话：', 'Unable to start chat: ') }}{{ startError }}
+        </p>
         <n-button
           v-if="detail?.published_version_id"
           class="full"
-          @click="run(() => startChat(detail))"
+          :disabled="busy || starting"
+          @click="beginChat(detail)"
         >
-          与已发布版本对话
+          {{ starting ? tr('正在启动…', 'Starting…') : '与已发布版本对话' }}
         </n-button>
       </view>
     </view>
@@ -197,12 +193,13 @@
 import { onMounted } from 'vue';
 import { usePageUi } from '../../composables/usePageUi.js';
 import { useSkillEditor } from '../../composables/useSkillEditor.js';
+import { useStartChat } from '../../composables/useStartChat.js';
 import { tr } from '../../services/locale.js';
-import { skillShareUrl } from '../../services/navigation.mjs';
-import { copySkill as copy, startChat } from '../../services/skillActions.js';
+import { copySkill as copy } from '../../services/skillActions.js';
 import { statusName } from '../../services/presentation.js';
 const props = defineProps({ pageName: String, query: Object, active: Boolean });
 const { busy, run, notify } = usePageUi();
+const { starting, startError, beginChat } = useStartChat();
 const copySkill = (value) => copy(value, notify);
 import { NInput, NTextarea, NButton, NLabel } from '../native.js';
 import GithubSkillLink from '../GithubSkillLink.vue';
@@ -231,5 +228,9 @@ const {
   loadEditor,
   initializeDraft,
 } = useSkillEditor({ props, notify });
+function removeAsset(key) {
+  delete draft.value.assets[key];
+  notify('已移除素材，请保存草稿');
+}
 onMounted(() => run(props.pageName === 'new' ? initializeDraft : loadEditor));
 </script>

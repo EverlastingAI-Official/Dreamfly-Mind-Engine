@@ -30,14 +30,20 @@ const { run } = usePageUi();
 const passwords = ref({ old_password: '', password: '' });
 async function logout(all) {
   await api(all ? '/auth/logout-all' : '/auth/logout', { method: 'POST' });
-  clearSession();
-  await navigate('login', {}, true);
+  try {
+    await navigate('login', {}, true, all ? '已退出所有设备' : '已退出当前账号');
+  } finally {
+    clearSession();
+  }
 }
 async function changePassword() {
   validatePassword(passwords.value.password);
   await api('/auth/change-password', { method: 'POST', body: passwords.value });
   passwords.value = { old_password: '', password: '' };
-  clearSession();
-  await navigate('login', {}, true);
+  try {
+    await navigate('login', {}, true, '密码已修改，已退出所有设备，请重新登录');
+  } finally {
+    clearSession();
+  }
 }
 </script>

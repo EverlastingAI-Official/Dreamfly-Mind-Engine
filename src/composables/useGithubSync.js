@@ -1,6 +1,7 @@
 import { computed, ref, watch, onUnmounted } from 'vue';
 import { api } from '../services/platform.js';
-export function useGithubSync({ detail, editingId, active }) {
+import { publicError } from '../services/locale.js';
+export function useGithubSync({ detail, editingId, active, notify }) {
   const settings = ref({}),
     jobs = ref([]),
     jobStatusError = ref('');
@@ -56,13 +57,14 @@ export function useGithubSync({ detail, editingId, active }) {
       settings.value = status;
       jobStatusError.value = '';
     } catch (error) {
-      jobStatusError.value = error.message;
+      jobStatusError.value = publicError(error);
     } finally {
       loading = false;
     }
   }
   async function retryJob(job) {
     await api('/sync-jobs/' + job.id + '/retry', { method: 'POST' });
+    notify('已提交同步重试，请查看同步状态');
     await loadJobs();
   }
   const shouldPoll = computed(

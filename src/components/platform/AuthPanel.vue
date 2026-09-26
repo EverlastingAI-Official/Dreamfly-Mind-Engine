@@ -163,7 +163,11 @@ async function submitAuth() {
     });
     value.password = '';
     setSession(state);
-    await navigateUrl(safeReturnTo(props.query.returnTo, paths.mine), true);
+    await navigateUrl(
+      safeReturnTo(props.query.returnTo, paths.mine),
+      true,
+      tr('登录成功', 'Signed in'),
+    );
   } else {
     const verification = {
       email: value.email,
@@ -180,7 +184,17 @@ async function submitAuth() {
     });
     value.password = '';
     value.confirm = '';
-    await navigate('login', returnQuery(), true);
+    await navigate(
+      'login',
+      returnQuery(),
+      true,
+      view.value === 'register'
+        ? tr('注册成功，请登录。', 'Account created. Please sign in.')
+        : tr(
+            '密码已重置，请使用新密码登录。',
+            'Password reset. Please sign in with your new password.',
+          ),
+    );
   }
 }
 </script>

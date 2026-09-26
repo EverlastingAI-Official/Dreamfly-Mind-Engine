@@ -14,8 +14,10 @@ watch(
 );
 
 export function publicError(error) {
-  const info = errorInfo(isErrorCode(error.code) ? error.code : 'HTTP_ERROR');
-  return locale.value === 'en' ? info.en : error.message || info.zh;
+  const known = isErrorCode(error?.code);
+  const info = errorInfo(known ? error.code : 'HTTP_ERROR');
+  if (locale.value === 'en' && known) return info.en;
+  return error?.message || error?.errMsg || info[locale.value];
 }
 
 export async function copyText(value) {
@@ -31,8 +33,8 @@ export async function copyText(value) {
   if (!copied)
     throw new Error(
       tr(
-        '无法自动复制，请手动选择 ID 复制。',
-        'Copy failed. Please select and copy the ID manually.',
+        '复制失败，请检查剪贴板权限后重试。',
+        'Copy failed. Please check clipboard permissions and try again.',
       ),
     );
 }

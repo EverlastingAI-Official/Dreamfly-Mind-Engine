@@ -1,13 +1,13 @@
 <template>
   <view class="platform">
     <view class="topbar">
-      <view class="brand" @click="$emit('navigate', 'explore')">
+      <n-button class="brand" @click="$emit('navigate', 'explore')">
         <text class="brand-icon">◈</text>
         <text>
           云己
           <text class="brand-en">DreamFly</text>
         </text>
-      </view>
+      </n-button>
       <view class="top-actions">
         <text class="muted">
           {{ tr('让思想被理解，让记忆可传承', 'Let minds connect and memories live on') }}

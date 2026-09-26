@@ -12,28 +12,17 @@
         @click="run(() => openConversation(c))"
       >
         {{ c.title }}
-        <small>{{ c.model_config.model }}</small>
       </n-button>
       <view class="row pagination">
-        <n-button
-          :disabled="busy || page === 1"
-          @click="
-            page--;
-            run(loadConversations);
-          "
+        <n-button :disabled="busy || page === 1" @click="run(() => loadConversations(page - 1))"
           >上一页</n-button
         >
         <text>第 {{ page }} 页</text>
-        <n-button
-          :disabled="busy || !hasMore"
-          @click="
-            page++;
-            run(loadConversations);
-          "
+        <n-button :disabled="busy || !hasMore" @click="run(() => loadConversations(page + 1))"
           >下一页</n-button
         >
       </view>
-      <p v-if="!conversations.length" class="muted">从 Skill 详情页开始一段对话。</p>
+      <p v-if="!busy && !conversations.length" class="muted">从 Skill 详情页开始一段对话。</p>
     </view>
     <view class="panel chat-panel">
       <template v-if="currentConversation">
@@ -46,19 +35,7 @@
             </n-button>
           </view>
         </view>
-        <view class="row">
-          <select class="grow" v-model="selectedProfile">
-            <option v-for="p in profiles" :value="p.id" :key="p.id">
-              {{ p.name }} · {{ p.model }}
-            </option>
-          </select>
-          <n-button class="small" :disabled="generating" @click="run(switchModel)">
-            切换后续模型
-          </n-button>
-        </view>
-        <p class="muted">
-          当前：{{ currentConversation.model_config.model }} · 会话记忆不会自动写入公开 Skill。
-        </p>
+        <p class="muted">会话记忆不会自动写入公开 Skill。</p>
         <view class="messages" ref="messageBox">
           <view v-for="m in messages" :key="m.id" class="message" :class="m.role">
             <text class="message-role">
@@ -67,8 +44,8 @@
             <view class="message-content">
               {{ m.content || (m.status === 'generating' ? '正在思考…' : '未生成文本') }}
             </view>
-            <small v-if="m.role === 'assistant'" class="muted">
-              {{ statusName(m.status) }} · {{ usageText(m.usage) }}
+            <small v-if="m.role === 'assistant' && m.status !== 'completed'" class="muted">
+              {{ statusName(m.status) }}
             </small>
           </view>
         </view>
@@ -81,11 +58,16 @@
             :disabled="generating"
           />
           <view class="row spaced">
-            <text class="muted">保持原文 · 私有会话</text>
-            <n-button v-if="generating" type="button" @click="run(cancelGeneration)">
-              停止生成
+            <text class="muted">私有会话</text>
+            <n-button
+              v-if="generating"
+              type="button"
+              :disabled="stopping"
+              @click="run(cancelGeneration)"
+            >
+              {{ stopping ? '正在停止…' : '停止生成' }}
             </n-button>
-            <n-button v-else class="primary" type="submit" :disabled="!input.trim()">
+            <n-button v-else class="primary" type="submit" :disabled="busy || !input.trim()">
               发送
             </n-button>
           </view>
@@ -104,25 +86,23 @@
 import { getCurrentInstance, onMounted, onUnmounted } from 'vue';
 import { usePageUi } from '../../composables/usePageUi.js';
 import { useConversations } from '../../composables/useConversations.js';
-import { statusName, usageText } from '../../services/presentation.js';
+import { statusName } from '../../services/presentation.js';
 import { auth } from '../../services/platform.js';
 import { navigate as go } from '../../services/navigation.mjs';
 const props = defineProps({ query: Object, active: Boolean });
 const { run, notify, busy } = usePageUi();
 import { NTextarea, NButton, NForm } from '../native.js';
 const {
-  profiles,
-  selectedProfile,
   conversations,
   currentConversation,
   messages,
   input,
   generating,
+  stopping,
   messageBox,
   openConversation,
   chat,
   cancelGeneration,
-  switchModel,
   renameConversation,
   deleteConversation,
   page,

@@ -1,5 +1,6 @@
 <template>
   <platform-layout :current="pageName" :navigation="navigation" @navigate="go">
+    <action-feedback :active="active" class="navigation-feedback" />
     <view v-if="pageError" class="empty panel" role="alert">
       <h1>{{ tr('无法打开此页面', 'Page unavailable') }}</h1>
       <p>{{ pageError }}</p>
@@ -15,7 +16,9 @@
   </platform-layout>
 </template>
 <script setup>
-import { computed, getCurrentInstance, nextTick, ref, watch } from 'vue';
+import { computed, getCurrentInstance, nextTick, provide, ref, watch } from 'vue';
+import { createPageUi, pageUiKey } from '../composables/usePageUi.js';
+import ActionFeedback from './ActionFeedback.vue';
 import PlatformLayout from './PlatformLayout.vue';
 import PageContent from './platform/PageContent.vue';
 import { NButton } from './native.js';
@@ -30,9 +33,13 @@ import {
   safeReturnTo,
   restoreScroll,
   installNavigationHooks,
+  takeNavigationFeedback,
 } from '../services/navigation.mjs';
 import { sessionIdentity, canOpenPage } from '../services/pageAccess.mjs';
 const props = defineProps({ pageName: String, query: Object, active: Boolean });
+const ui = createPageUi();
+provide(pageUiKey, ui);
+const { run, notify } = ui;
 const ready = ref(false),
   pageError = ref('');
 const identity = computed(() => sessionIdentity(auth.user));
@@ -60,7 +67,7 @@ function go(name) {
     authPages.includes(name) && authPages.includes(props.pageName) && props.query.returnTo
       ? { returnTo: safeReturnTo(props.query.returnTo) }
       : {};
-  return navigate(name, query);
+  return run(() => navigate(name, query));
 }
 function checkAccess() {
   if (!props.active) return;
@@ -74,15 +81,21 @@ async function loadPage() {
     await checkAccess();
     ready.value = true;
     await nextTick();
+    const message = props.active ? takeNavigationFeedback() : null;
+    if (message) notify(message);
     if (props.active) restoreScroll();
   } catch (error) {
     pageError.value = publicError(error);
   }
 }
 // A different account or role gives every business panel a fresh component scope.
-watch(identity, () => {
+watch(identity, async () => {
   pageError.value = '';
-  checkAccess();
+  try {
+    await checkAccess();
+  } catch (error) {
+    notify(publicError(error), 'error');
+  }
 });
 watch(
   [identity, () => props.active],

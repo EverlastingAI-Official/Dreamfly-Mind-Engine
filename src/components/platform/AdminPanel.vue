@@ -34,11 +34,13 @@ async function blockSkill() {
   notify('已下架');
 }
 async function toggleUser(user) {
+  const status = user.status === 'active' ? 'disabled' : 'active';
   await api('/admin/users/' + user.id + '/status', {
     method: 'PATCH',
-    body: { status: user.status === 'active' ? 'disabled' : 'active' },
+    body: { status },
   });
   await loadUsers();
+  notify(status === 'disabled' ? '用户已停用' : '用户已恢复');
 }
 onMounted(() => run(loadUsers));
 </script>

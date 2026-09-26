@@ -1,18 +1,14 @@
 <template>
-  <view v-if="notice" class="notice" :class="noticeType" role="status">
-    {{ notice }}<n-button class="dismiss" @click="notice = ''">×</n-button>
-  </view>
-  <view v-if="busy" class="loading" role="status">{{ tr('正在处理…', 'Working…') }}</view>
+  <action-feedback :active="active" :show-notice="false" />
   <explore-skills
     v-if="['explore', 'detail'].includes(pageName)"
     :query="query"
     :detail-page="pageName === 'detail'"
     :active="active"
-    @create="newSkill"
+    @create="run(newSkill)"
     @import="run(importSkill)"
-    @edit="openSkill"
-    @chat="(skill, profile) => run(() => startChat(skill, profile))"
-    @models="navigate('models')"
+    @edit="(id) => run(() => openSkill(id))"
+    @models="run(() => navigate('models'))"
   />
   <auth-panel
     v-else-if="['login', 'register', 'reset'].includes(pageName)"
@@ -32,11 +28,11 @@
 </template>
 <script setup>
 import { provide } from 'vue';
-import { createPageUi, pageUiKey } from '../../composables/usePageUi.js';
+import { createPageUi, pageUiKey, usePageUi } from '../../composables/usePageUi.js';
+import ActionFeedback from '../ActionFeedback.vue';
 import { tr } from '../../services/locale.js';
 import { navigate } from '../../services/navigation.mjs';
-import { newSkill, importSkill, openSkill, startChat } from '../../services/skillActions.js';
-import { NButton } from '../native.js';
+import { newSkill, importSkill, openSkill } from '../../services/skillActions.js';
 import ExploreSkills from '../ExploreSkills.vue';
 import AuthPanel from './AuthPanel.vue';
 import MySkillsPanel from './MySkillsPanel.vue';
@@ -46,7 +42,7 @@ import ModelsPanel from './ModelsPanel.vue';
 import AccountPanel from './AccountPanel.vue';
 import AdminPanel from './AdminPanel.vue';
 const props = defineProps({ pageName: String, query: Object, active: Boolean });
-const ui = createPageUi();
+const ui = createPageUi(usePageUi());
 provide(pageUiKey, ui);
-const { notice, noticeType, busy, run } = ui;
+const { run } = ui;
 </script>

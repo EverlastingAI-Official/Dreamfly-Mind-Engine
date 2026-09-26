@@ -1,6 +1,7 @@
 import { ref, computed } from 'vue';
 import { api } from '../services/platform.js';
 import { modelProfileInput } from '../services/payloads.js';
+import { publicError } from '../services/locale.js';
 export function useModelConnections({ notify }) {
   const profiles = ref([]),
     defaultProfile = ref(''),
@@ -138,7 +139,7 @@ export function useModelConnections({ notify }) {
       if (!models.some((m) => m.id === f.model)) f.model = '';
     } catch (e) {
       if (request === modelListRequest)
-        modelListError.value = e.message + '；请检查 API Key 或网络后重试。';
+        modelListError.value = publicError(e) + '；请检查 API Key 或网络后重试。';
     } finally {
       if (request === modelListRequest) modelsLoading.value = false;
     }
@@ -160,6 +161,7 @@ export function useModelConnections({ notify }) {
     });
     await loadProfiles();
     if (modelForm.value.id === p.id) resetModel();
+    notify('模型连接已删除');
   }
   return {
     profiles,

@@ -41,6 +41,9 @@ coverage/
 .venv/
 /.references/
 
+# Locally generated images, screenshots and export bundles
+/output/
+
 # Logs and temporary files
 *.log
 *.pid

@@ -16,7 +16,7 @@ export function useSkillEditor({ props, notify }) {
   const detail = ref(null),
     editingId = ref(''),
     draft = ref(emptyMind());
-  const sync = useGithubSync({ detail, editingId, active: () => props.active });
+  const sync = useGithubSync({ detail, editingId, active: () => props.active, notify });
   const { loadJobs } = sync;
   const publication = ref(defaultPublication(draft.value)),
     newSkillId = ref(''),
@@ -116,6 +116,7 @@ export function useSkillEditor({ props, notify }) {
           id: result.id,
         },
         true,
+        '草稿已保存',
       );
   }
   async function publishSkill() {
@@ -160,6 +161,7 @@ export function useSkillEditor({ props, notify }) {
           id: result.id,
         },
         true,
+        result.sync_policy === 'weekly' ? '已上传，将在每周同步时处理' : '已上传',
       );
   }
   function listingChanged() {
@@ -176,10 +178,12 @@ export function useSkillEditor({ props, notify }) {
     };
     draft.value.memory.fragments.push(memory);
     publication.value.memory_ids.push(memory.id);
+    notify('已添加记忆，请填写内容后保存草稿');
   }
   function removeMemory(index) {
     const [memory] = draft.value.memory.fragments.splice(index, 1);
     publication.value.memory_ids = publication.value.memory_ids.filter((id) => id !== memory.id);
+    notify('已移除记忆，请保存草稿');
   }
   async function unpublishSkill() {
     await api(`/skills/${editingId.value}/unpublish`, {

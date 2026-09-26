@@ -106,10 +106,19 @@ export function migrateInitialUrl() {
 export function currentUrl() {
   return window.location.pathname + window.location.search;
 }
-export function navigate(name, query = {}, replace = false) {
-  return navigateUrl(pageUrl(name, query), replace);
+let navigationFeedback;
+export function takeNavigationFeedback() {
+  if (navigationFeedback?.url !== currentUrl()) return null;
+  const message = navigationFeedback.message;
+  navigationFeedback = undefined;
+  return message;
 }
-export function navigateUrl(url, replace = false) {
+export function navigate(name, query = {}, replace = false, message) {
+  return navigateUrl(pageUrl(name, query), replace, message);
+}
+export function navigateUrl(url, replace = false, message) {
+  const feedback = message ? { url, message } : undefined;
+  if (feedback) navigationFeedback = feedback;
   if (url === currentUrl()) return Promise.resolve();
   // uni-app encodes query values again before calling its H5 router. Redirect
   // that transition to the canonical query, retaining uni-app's page lifecycle
@@ -124,13 +133,17 @@ export function navigateUrl(url, replace = false) {
         query: Object.fromEntries(target.searchParams),
       };
   });
-  return new Promise((resolve, reject) =>
-    uni[replace ? 'redirectTo' : 'navigateTo']({
-      url,
-      success: resolve,
-      fail: reject,
-    }),
-  ).finally(removeGuard);
+  return new Promise((resolve, reject) => {
+    const options = { url, success: resolve, fail: reject };
+    // UniApp discovers APIs from explicit calls when building H5 bundles.
+    if (replace) uni.redirectTo(options);
+    else uni.navigateTo(options);
+  })
+    .catch((error) => {
+      if (navigationFeedback === feedback) navigationFeedback = undefined;
+      throw error;
+    })
+    .finally(removeGuard);
 }
 export function loginUrl(returnTo = currentUrl()) {
   return pageUrl('login', { returnTo: safeReturnTo(returnTo) });
